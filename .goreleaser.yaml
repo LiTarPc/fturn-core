@@ -127,7 +127,7 @@ dockers_v2:
       - server
     dockerfile: Dockerfile.goreleaser
     images:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY | tolower }}"
     tags:
       - "{{ .Version }}"
       - '{{ if not .Prerelease }}latest{{ end }}'
