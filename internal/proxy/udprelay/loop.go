@@ -68,14 +68,11 @@ func TURNLoop(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr
 		case <-ctx.Done():
 			return
 		case pair := <-connchan:
-			// Джиттер разводит Allocate соседних стримов во времени.
-			select {
-			case <-time.After(time.Duration(randx.Intn(400)+100) * time.Millisecond):
-			case <-ctx.Done():
+			if !deps.allocPace.wait(ctx) {
 				return
 			}
 			c := make(chan error, 1)
-			go oneTURN(ctx, deps, params, peer, pair.pipe, streamID, c)
+			go deps.guard(func() { oneTURN(ctx, deps, params, peer, pair.pipe, streamID, c) })()
 
 			var err error
 			select {
@@ -88,10 +85,7 @@ func TURNLoop(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr
 			if err != nil {
 				if errors.Is(err, provider.ErrFatalNoStreams) {
 					deps.log().Errorf("[STREAM %d] Fatal provider error. Shutting down application.", streamID)
-					select {
-					case deps.fatalCh <- fmt.Errorf("%w: %w", ErrFatal, err):
-					default:
-					}
+					deps.fatal(err)
 					return
 				}
 				if errors.Is(err, provider.ErrBackoffActive) {
@@ -160,9 +154,9 @@ func dtlsSession(dtlsctx context.Context, dtlscancel context.CancelFunc, deps *D
 	var dtlsConn net.Conn = dtlsRaw
 	defer func() {
 		_ = dtlsConn.Close()
-		deps.log().Infof("[STREAM %d] Closed DTLS connection", streamID)
+		deps.log().Debugf("[STREAM %d] Closed DTLS connection", streamID)
 	}()
-	deps.log().Infof("[STREAM %d] Established DTLS connection", streamID)
+	deps.log().Debugf("[STREAM %d] Established DTLS connection", streamID)
 
 	if err := clientsdb.WriteClientID(dtlsConn, params.ClientID); err != nil {
 		return fmt.Errorf("failed to write client ID: %w", err)
@@ -252,9 +246,8 @@ func oneTURN(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr,
 		cerr := stream.Close()
 		deps.log().Infof("[STREAM %d] TURN allocation released: relayed=%s deallocate=%v",
 			streamID, relayedAddr, cerr)
-		// Ошибку закрытия не ставим поверх причины выхода - она уже сказала, почему стрим упал.
-		if cerr != nil && err == nil {
-			err = fmt.Errorf("failed to close TURN stream: %w", cerr)
+		if cerr != nil {
+			deps.Auth.DropCredentials(streamID)
 		}
 	}()
 

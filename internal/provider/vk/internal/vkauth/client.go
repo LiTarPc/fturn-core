@@ -12,6 +12,7 @@ import (
 
 	"github.com/samosvalishe/free-turn-proxy/internal/logx"
 	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/browserprofile"
+	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/captcha"
 	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/personanet"
 	"github.com/samosvalishe/free-turn-proxy/internal/randx"
 
@@ -93,7 +94,7 @@ func New(cfg Config) *Client {
 	c.identity = browserprofile.Identity{Seed: seed, Gen: c.gens.load(seed)}
 	c.persona = browserprofile.For(c.platform, c.identity)
 	if c.identity.Gen > 0 {
-		c.log.Infof("[VK Auth] Persona gen=%d restored | User-Agent: %s", c.identity.Gen, c.persona.UserAgent)
+		c.log.Debugf("[VK Auth] Persona gen=%d restored | User-Agent: %s", c.identity.Gen, c.persona.UserAgent)
 	}
 	return c
 }
@@ -192,6 +193,14 @@ func (c *Client) ResetErrors(streamID int) {
 	c.store.Get(streamID).errorCount.Store(0)
 }
 
+func (c *Client) DropCredentials(streamID int) {
+	if !c.store.Get(streamID).Invalidate() {
+		return
+	}
+	c.log.Warnf("[STREAM %d] [VK Auth] Deallocate unconfirmed - credentials dropped (cache=%d)",
+		streamID, c.store.CacheID(streamID))
+}
+
 func (c *Client) LockoutUntilUnix() int64 {
 	return c.lockout.Load()
 }
@@ -225,8 +234,11 @@ func (c *Client) fetchSerialized(ctx context.Context, link string, streamID int)
 		case <-time.After(wait):
 		}
 	}
-	defer func() { c.lastFetchTime = time.Now() }()
-	return c.fetch(ctx, link, streamID)
+	user, pass, addrs, err := c.fetch(ctx, link, streamID)
+	if ctx.Err() == nil {
+		c.lastFetchTime = time.Now()
+	}
+	return user, pass, addrs, err
 }
 
 func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, string, []string, error) {
@@ -241,14 +253,17 @@ func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, 
 	jar := personanet.NewCookieJar()
 	for i := 0; i < len(c.credentials); {
 		creds := c.credentials[i]
-		c.log.Infof("[STREAM %d] [VK Auth] Trying credentials: client_id=%s", streamID, creds.ClientID)
+		c.log.Debugf("[STREAM %d] [VK Auth] Trying credentials: client_id=%s", streamID, creds.ClientID)
 
 		user, pass, addrs, err := c.tokenChain(ctx, link, streamID, creds, jar)
 		if err == nil {
-			c.log.Infof("[STREAM %d] [VK Auth] Success with client_id=%s", streamID, creds.ClientID)
+			c.log.Debugf("[STREAM %d] [VK Auth] Success with client_id=%s", streamID, creds.ClientID)
 			return user, pass, addrs, nil
 		}
 		lastErr = err
+		if ctx.Err() != nil {
+			return "", "", nil, err
+		}
 		c.log.Warnf("[STREAM %d] [VK Auth] Failed with client_id=%s: %v", streamID, creds.ClientID, err)
 
 		// Личность сменилась - тот же client_id проходится заново с чистыми
@@ -262,7 +277,7 @@ func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, 
 
 		if errors.Is(err, ErrCaptchaWaitRequired) || errors.Is(err, ErrFatalCaptchaNoStreams) ||
 			errors.Is(err, ErrInvalidJoinLink) || errors.Is(err, ErrAnonymousBlocked) ||
-			errors.Is(err, ErrCallFull) {
+			errors.Is(err, ErrCallFull) || errors.Is(err, captcha.ErrUnavailable) {
 			return "", "", nil, err
 		}
 		es := err.Error()
