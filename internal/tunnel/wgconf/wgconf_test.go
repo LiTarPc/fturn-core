@@ -78,7 +78,7 @@ PersistentKeepalive = 25
 		t.Errorf("DNS = %v, want two addresses", cfg.DNS)
 	}
 	peer := cfg.Peers[0]
-	if peer.PresharedKey.IsZero() || peer.Endpoint != "1.2.3.4:51820" || peer.Keepalive != 25 {
+	if peer.PresharedKey.IsZero() || peer.Endpoint != "1.2.3.4:51820" || peer.Keepalive != "25" {
 		t.Errorf("peer = %+v", peer)
 	}
 	if len(peer.AllowedIPs) != 2 {
@@ -155,8 +155,8 @@ func TestParseKeepaliveOff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	if cfg.Peers[0].Keepalive != 0 {
-		t.Errorf("Keepalive = %d, want 0", cfg.Peers[0].Keepalive)
+	if cfg.Peers[0].Keepalive != "" {
+		t.Errorf("Keepalive = %q, want empty", cfg.Peers[0].Keepalive)
 	}
 }
 

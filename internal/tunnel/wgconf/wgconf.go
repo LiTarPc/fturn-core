@@ -172,14 +172,13 @@ func applyPeer(peer *tunnel.Peer, key, value string) error {
 		peer.Endpoint = value
 	case "persistentkeepalive":
 		if strings.EqualFold(value, "off") {
-			peer.Keepalive = 0
+			peer.Keepalive = ""
 			return nil
 		}
-		seconds, err := strconv.Atoi(value)
-		if err != nil {
+		if err := tunnel.ValidateRange(value); err != nil {
 			return fmt.Errorf("persistentkeepalive: %w", err)
 		}
-		peer.Keepalive = seconds
+		peer.Keepalive = value
 	default:
 		return fmt.Errorf("unknown [Peer] key %q", key)
 	}

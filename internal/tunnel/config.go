@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"strconv"
+	"strings"
 )
 
 // DefaultMTU - безопасный MTU для WireGuard поверх TURN без фрагментации.
@@ -22,7 +24,7 @@ type Peer struct {
 	PresharedKey Key
 	AllowedIPs   []netip.Prefix
 	Endpoint     string
-	Keepalive    int
+	Keepalive string
 }
 
 type Config struct {
@@ -78,8 +80,8 @@ func (c *Config) Validate() error {
 		if len(p.AllowedIPs) == 0 {
 			return fmt.Errorf("tunnel: peer[%d]: AllowedIPs is required", i)
 		}
-		if p.Keepalive < 0 {
-			return fmt.Errorf("tunnel: peer[%d]: negative keepalive", i)
+		if err := ValidateRange(p.Keepalive); err != nil {
+			return fmt.Errorf("tunnel: peer[%d]: keepalive: %w", i, err)
 		}
 	}
 	if c.MTU <= 0 {
@@ -110,6 +112,29 @@ func (p AmneziaParams) validate() error {
 		if v < 0 {
 			return errors.New("tunnel: amnezia padding must not be negative")
 		}
+	}
+	return nil
+}
+
+// ValidateRange проверяет формат диапазона ("N" или "LO-HI"); пустая строка - не задан.
+func ValidateRange(s string) error {
+	if s == "" {
+		return nil
+	}
+	lo, hi, hasHi := strings.Cut(s, "-")
+	low, err := strconv.ParseUint(lo, 10, 32)
+	if err != nil {
+		return fmt.Errorf("bad lower bound %q", lo)
+	}
+	if !hasHi {
+		return nil
+	}
+	high, err := strconv.ParseUint(hi, 10, 32)
+	if err != nil {
+		return fmt.Errorf("bad upper bound %q", hi)
+	}
+	if high < low {
+		return fmt.Errorf("upper bound %d below lower %d", high, low)
 	}
 	return nil
 }
