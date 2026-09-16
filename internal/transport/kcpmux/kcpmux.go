@@ -12,8 +12,15 @@ import (
 	"github.com/xtaci/smux"
 )
 
-// acceptTimeout ограничивает ожидание первой KCP-датаграммы от клиента на сервере.
-const acceptTimeout = 30 * time.Second
+const (
+	// acceptTimeout ограничивает ожидание первой KCP-датаграммы от клиента на сервере.
+	acceptTimeout = 30 * time.Second
+
+	// serverSmuxFrameSize уменьшает quantum server->client между параллельными smux-потоками.
+	// Дефолт smux (32 KiB) превращается примерно в десятки KCP-сегментов подряд; 8 KiB
+	// сохраняет хороший batching, но чаще отдаёт scheduler другому интерактивному потоку.
+	serverSmuxFrameSize = 8 * 1024
+)
 
 // Profile - параметры конгестии KCP; должен совпадать по смыслу с флагами -kcp-*.
 type Profile struct {
@@ -115,13 +122,22 @@ func Accept(conn net.Conn, profile Profile) (*ServerSession, error) {
 	return &ServerSession{UDPSession: sess, listener: listener}, nil
 }
 
-// SmuxConfig - параметры smux, общие для клиента и сервера (буферы должны совпадать).
+// SmuxConfig - базовые параметры smux для обеих сторон протокола.
 func SmuxConfig() *smux.Config {
 	cfg := smux.DefaultConfig()
 	cfg.MaxReceiveBuffer = 4 * 1024 * 1024
 	cfg.MaxStreamBuffer = 1 * 1024 * 1024
 	cfg.KeepAliveInterval = 10 * time.Second
 	cfg.KeepAliveTimeout = 30 * time.Second
+	return cfg
+}
+
+// ServerSmuxConfig оставляет wire-совместимость с клиентом, но уменьшает только
+// server->client frame quantum. MaxFrameSize управляет нарезкой локальных Write и не
+// требует одинакового значения у peer: длина каждого входящего frame передаётся в заголовке.
+func ServerSmuxConfig() *smux.Config {
+	cfg := SmuxConfig()
+	cfg.MaxFrameSize = serverSmuxFrameSize
 	return cfg
 }
 
