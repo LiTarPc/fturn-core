@@ -42,6 +42,22 @@ func pipePair(dropEvery uint64) (*datagramConn, *datagramConn) {
 		&datagramConn{PacketConn: b, remote: a.LocalAddr()}
 }
 
+func TestServerSmuxConfigUsesSmallerFrames(t *testing.T) {
+	t.Parallel()
+
+	client := SmuxConfig()
+	server := ServerSmuxConfig()
+	if server.MaxFrameSize != serverSmuxFrameSize {
+		t.Fatalf("server MaxFrameSize=%d, want %d", server.MaxFrameSize, serverSmuxFrameSize)
+	}
+	if server.MaxFrameSize >= client.MaxFrameSize {
+		t.Fatalf("server MaxFrameSize=%d must be smaller than client=%d", server.MaxFrameSize, client.MaxFrameSize)
+	}
+	if server.MaxReceiveBuffer != client.MaxReceiveBuffer || server.MaxStreamBuffer != client.MaxStreamBuffer {
+		t.Fatal("server smux config unexpectedly changed receive buffers")
+	}
+}
+
 func TestRoundTrip(t *testing.T) {
 	t.Parallel()
 	runRoundTrip(t, 0)
@@ -66,7 +82,7 @@ func runRoundTrip(t *testing.T, dropEvery uint64) {
 			serverErr <- err
 			return
 		}
-		smuxSess, err := smux.Server(kcpSess, SmuxConfig())
+		smuxSess, err := smux.Server(kcpSess, ServerSmuxConfig())
 		if err != nil {
 			serverErr <- err
 			return
@@ -80,6 +96,8 @@ func runRoundTrip(t *testing.T, dropEvery uint64) {
 	}
 	defer func() { _ = kcpClient.Close() }()
 
+	// Клиент остаётся на обычном конфиге (32 KiB frame), сервер использует уменьшенный
+	// frame quantum. Так тест одновременно проверяет wire-совместимость асимметричных настроек.
 	smuxClient, err := smux.Client(kcpClient, SmuxConfig())
 	if err != nil {
 		t.Fatal(err)
@@ -126,8 +144,9 @@ func runRoundTrip(t *testing.T, dropEvery uint64) {
 		t.Fatal(err)
 	}
 
-	// обратное направление: сервер отвечает по тому же потоку
-	back := payload[:4096]
+	// Обратное направление больше server frame size, чтобы сервер гарантированно нарезал
+	// запись на несколько 8 KiB frames, а клиент с обычным конфигом корректно её собрал.
+	back := payload[:32*1024]
 	go func() { _, _ = srvStream.Write(back) }()
 	echo := make([]byte, len(back))
 	if err := stream.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil {
