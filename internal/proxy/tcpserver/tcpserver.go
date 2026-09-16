@@ -29,7 +29,7 @@ func Handle(ctx context.Context, logger logx.Logger, dtlsConn net.Conn, connectA
 		}
 	}()
 
-	smuxSess, err := smux.Server(kcpSess, kcpmux.SmuxConfig())
+	smuxSess, err := smux.Server(kcpSess, kcpmux.ServerSmuxConfig())
 	if err != nil {
 		logger.Errorf("tcpserver: smux server: %s", err)
 		return
