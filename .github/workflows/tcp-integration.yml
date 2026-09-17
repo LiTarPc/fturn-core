@@ -50,7 +50,10 @@ jobs:
         run: go build -o /tmp/fturn-client ./cmd/client
 
       - name: Build production server
-        run: go build -o /tmp/fturn-server ./cmd/server
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w -checklinkname=0" -o dist/fturn-server-linux-amd64 ./cmd/server
+          test -s dist/fturn-server-linux-amd64
 
       - name: Build Windows client amd64
         env:
@@ -80,6 +83,13 @@ jobs:
 
       - name: Run TCP integration test
         run: go test -tags=integration -v -count=1 -timeout=3m ./internal/proxy/tcprelay
+
+      - name: Upload Linux server
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: fturn-server-linux-amd64
+          path: dist/fturn-server-linux-amd64
+          retention-days: 7
 
       - name: Upload Windows client
         uses: actions/upload-artifact@v7.0.1
