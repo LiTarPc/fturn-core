@@ -113,7 +113,8 @@ changelog:
       - 'Merge branch'
 
 release:
-  prerelease: auto
+  # Every pushed vX.Y.Z tag is intentionally published as a GitHub prerelease.
+  prerelease: true
   mode: replace
   draft: false
   name_template: "{{ .ProjectName }} {{ .Version }}"
@@ -128,9 +129,9 @@ dockers_v2:
     dockerfile: Dockerfile.goreleaser
     images:
       - "ghcr.io/{{ .Env.GITHUB_REPOSITORY | tolower }}"
+    # Tagged prereleases must never overwrite the production `latest` image.
     tags:
       - "{{ .Version }}"
-      - '{{ if not .Prerelease }}latest{{ end }}'
     platforms:
       - linux/amd64
     labels:
