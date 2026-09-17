@@ -7,6 +7,7 @@ on:
       - "cmd/client/**"
       - "cmd/server/**"
       - "mobile/**"
+      - "internal/config/**"
       - "internal/proxy/tcprelay/**"
       - "internal/proxy/tcpserver/**"
       - "internal/transport/**"
@@ -80,6 +81,9 @@ jobs:
         run: |
           task build:android
           test -s dist/freeturn.aar
+
+      - name: Run SMUX profile tests
+        run: go test -v -count=1 ./internal/config ./internal/transport/kcpmux ./internal/proxy/tcpserver
 
       - name: Run TCP integration test
         run: go test -tags=integration -v -count=1 -timeout=3m ./internal/proxy/tcprelay
