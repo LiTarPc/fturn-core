@@ -12,15 +12,48 @@ import (
 	"github.com/xtaci/smux"
 )
 
-const (
-	// acceptTimeout ограничивает ожидание первой KCP-датаграммы от клиента на сервере.
-	acceptTimeout = 30 * time.Second
+const acceptTimeout = 30 * time.Second
 
-	// serverSmuxFrameSize уменьшает quantum server->client между параллельными smux-потоками.
-	// Дефолт smux (32 KiB) превращается примерно в десятки KCP-сегментов подряд; 8 KiB
-	// сохраняет хороший batching, но чаще отдаёт scheduler другому интерактивному потоку.
-	serverSmuxFrameSize = 8 * 1024
+// SmuxProfile управляет только размером исходящих server->client smux frames.
+// Это локальная настройка writer-а: peer читает длину frame из smux-заголовка,
+// поэтому клиенту не требуется использовать тот же профиль.
+type SmuxProfile string
+
+const (
+	SmuxProfileLow    SmuxProfile = "low"
+	SmuxProfileMedium SmuxProfile = "medium"
+	SmuxProfileHigh   SmuxProfile = "high"
+
+	smuxFrameLow    = 8 * 1024
+	smuxFrameMedium = 16 * 1024
+	smuxFrameHigh   = 32 * 1024
 )
+
+func DefaultSmuxProfile() SmuxProfile { return SmuxProfileMedium }
+
+func ValidateSmuxProfile(profile SmuxProfile) error {
+	switch profile {
+	case SmuxProfileLow, SmuxProfileMedium, SmuxProfileHigh:
+		return nil
+	default:
+		return fmt.Errorf("invalid -smux-profile value %q: must be low | medium | high", profile)
+	}
+}
+
+// SmuxFrameSize возвращает server->client scheduling quantum для профиля.
+// Неизвестное значение безопасно сваливается в medium; CLI валидирует профиль заранее.
+func SmuxFrameSize(profile SmuxProfile) int {
+	switch profile {
+	case SmuxProfileLow:
+		return smuxFrameLow
+	case SmuxProfileHigh:
+		return smuxFrameHigh
+	case SmuxProfileMedium:
+		fallthrough
+	default:
+		return smuxFrameMedium
+	}
+}
 
 // Profile - параметры конгестии KCP; должен совпадать по смыслу с флагами -kcp-*.
 type Profile struct {
@@ -59,11 +92,9 @@ func (d *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	n, err := d.conn.Read(b)
 	return n, d.conn.RemoteAddr(), err
 }
-
 func (d *PacketConn) WriteTo(b []byte, _ net.Addr) (int, error) {
 	return d.conn.Write(b)
 }
-
 func (d *PacketConn) Close() error                       { return d.conn.Close() }
 func (d *PacketConn) LocalAddr() net.Addr                { return d.conn.LocalAddr() }
 func (d *PacketConn) SetDeadline(t time.Time) error      { return d.conn.SetDeadline(t) }
@@ -132,12 +163,11 @@ func SmuxConfig() *smux.Config {
 	return cfg
 }
 
-// ServerSmuxConfig оставляет wire-совместимость с клиентом, но уменьшает только
-// server->client frame quantum. MaxFrameSize управляет нарезкой локальных Write и не
-// требует одинакового значения у peer: длина каждого входящего frame передаётся в заголовке.
-func ServerSmuxConfig() *smux.Config {
+// ServerSmuxConfig оставляет wire-совместимость с клиентом, меняя только локальную
+// нарезку server->client Write. MaxFrameSize не обязан совпадать у peer.
+func ServerSmuxConfig(profile SmuxProfile) *smux.Config {
 	cfg := SmuxConfig()
-	cfg.MaxFrameSize = serverSmuxFrameSize
+	cfg.MaxFrameSize = SmuxFrameSize(profile)
 	return cfg
 }
 
