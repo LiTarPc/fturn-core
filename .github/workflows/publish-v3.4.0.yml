@@ -1,4 +1,4 @@
-name: Publish v3.4.0 Prerelease
+name: Finalize v3.4.0 Prerelease
 
 on:
   push:
@@ -8,91 +8,50 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 env:
-  GO_VERSION: "1.26.6"
-  GORELEASER_VERSION: v2.17.1
-  GOMOBILE_VERSION: latest
-  TASK_VERSION: 3.52.0
+  RELEASE_ID: "390869993"
   RELEASE_TAG: v3.4.0
   RELEASE_SHA: d858b9a3710cca6b93d1ffdffa2996fae9c91d23
 
 jobs:
-  publish:
-    name: Build and publish v3.4.0
+  finalize:
+    name: Finalize existing v3.4.0 draft
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6.0.2
         with:
-          ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
 
-      - uses: actions/setup-go@v6.4.0
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - uses: arduino/setup-task@v2.0.0
-        with:
-          version: ${{ env.TASK_VERSION }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify TURN/TCP recovery
-        run: go test -tags=integration -v -count=1 -timeout=3m ./internal/proxy/tcprelay
-
-      - name: Set up Android NDK
-        run: |
-          NDK_DIR=$(ls -d "$ANDROID_SDK_ROOT"/ndk/*/ 2>/dev/null | sort -V | tail -n1)
-          test -n "$NDK_DIR"
-          echo "ANDROID_NDK_HOME=${NDK_DIR%/}" >> "$GITHUB_ENV"
-
-      - name: Install gomobile
-        run: |
-          go install golang.org/x/mobile/cmd/gomobile@${{ env.GOMOBILE_VERSION }}
-          gomobile init
-
-      - name: Build Android AAR
-        run: |
-          task build:android
-          test -s dist/freeturn.aar
-          test -s dist/freeturn-sources.jar
-          mkdir -p mobile-dist
-          cp dist/freeturn.aar dist/freeturn-sources.jar mobile-dist/
-
-      - name: Create v3.4.0 tag on release commit
+      - name: Verify tag and uploaded assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git fetch --tags origin
-          if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
-            TAG_SHA=$(git rev-list -n1 "${RELEASE_TAG}")
-            test "$TAG_SHA" = "$RELEASE_SHA"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag -a "$RELEASE_TAG" "$RELEASE_SHA" -m "$RELEASE_TAG prerelease"
-            git push origin "refs/tags/$RELEASE_TAG"
-          fi
+          TAG_SHA=$(git rev-list -n1 "$RELEASE_TAG")
+          test "$TAG_SHA" = "$RELEASE_SHA"
 
-      - uses: docker/setup-qemu-action@v4.0.0
+          ASSETS=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" --jq '.assets[].name')
+          for NAME in \
+            checksums.txt \
+            client-android-arm64 \
+            client-windows-amd64.exe \
+            freeturn.aar \
+            freeturn-sources.jar \
+            server-linux-amd64
+          do
+            echo "$ASSETS" | grep -Fx "$NAME" >/dev/null
+          done
 
-      - uses: docker/setup-buildx-action@v4.1.0
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v4.2.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install syft (SBOM)
-        uses: anchore/sbom-action/download-syft@v0.24.0
-
-      - name: Publish prerelease with GoReleaser
-        uses: goreleaser/goreleaser-action@v7.2.2
-        with:
-          distribution: goreleaser
-          version: ${{ env.GORELEASER_VERSION }}
-          args: release --clean
+      - name: Publish as prerelease
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            -F draft=false \
+            -F prerelease=true >/dev/null
+
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" --jq '.draft')" = "false"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" --jq '.prerelease')" = "true"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" --jq '.tag_name')" = "$RELEASE_TAG"
