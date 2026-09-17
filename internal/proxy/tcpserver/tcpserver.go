@@ -17,7 +17,13 @@ import (
 const backendDialTimeout = 10 * time.Second
 
 // Handle блокирует вызывающую горутину до закрытия сессии клиентом или ctx.
-func Handle(ctx context.Context, logger logx.Logger, dtlsConn net.Conn, connectAddr string, profile kcpmux.Profile, smuxProfile kcpmux.SmuxProfile) {
+// smuxProfiles опционален для source-совместимости внутренних callers: без него medium.
+func Handle(ctx context.Context, logger logx.Logger, dtlsConn net.Conn, connectAddr string, profile kcpmux.Profile, smuxProfiles ...kcpmux.SmuxProfile) {
+	smuxProfile := kcpmux.DefaultSmuxProfile()
+	if len(smuxProfiles) > 0 {
+		smuxProfile = smuxProfiles[0]
+	}
+
 	kcpSess, err := kcpmux.Accept(dtlsConn, profile)
 	if err != nil {
 		logger.Errorf("tcpserver: %s", err)
@@ -137,6 +143,7 @@ func relayHalfClose(ctx context.Context, left, right net.Conn, errf func(format 
 				errf("tcpserver: %s CloseWrite: %v", direction, err)
 			}
 			abort()
+			return
 		}
 	}
 
