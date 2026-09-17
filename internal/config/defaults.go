@@ -66,5 +66,6 @@ func ServerDefaults() Server {
 		Obf:   ObfOpts{Profile: DefaultObfProfile},
 		Proxy: ProxyOpts{Mode: ProxyModeUDP, Listen: DefaultServerListen},
 		KCP:   KCPOpts{Profile: kcpmux.DefaultProfile()},
+		Smux:  SmuxOpts{Profile: kcpmux.DefaultSmuxProfile()},
 	}
 }
