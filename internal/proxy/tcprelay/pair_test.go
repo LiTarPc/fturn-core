@@ -3,6 +3,7 @@ package tcprelay
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"sync/atomic"
@@ -60,6 +61,23 @@ func pairedSession(t *testing.T, ctx context.Context, backendAddr string) *smux.
 	return sess
 }
 
+type staleMuxSession struct {
+	closed atomic.Bool
+	opens  atomic.Int32
+}
+
+func (s *staleMuxSession) OpenStream() (*smux.Stream, error) {
+	s.opens.Add(1)
+	return nil, errors.New("simulated stale TURN socket")
+}
+
+func (s *staleMuxSession) IsClosed() bool { return s.closed.Load() }
+
+func (s *staleMuxSession) Close() error {
+	s.closed.Store(true)
+	return nil
+}
+
 func TestAcceptLoopForwardsToBackend(t *testing.T) {
 	t.Parallel()
 
@@ -113,6 +131,62 @@ func TestAcceptLoopForwardsToBackend(t *testing.T) {
 	case <-loopDone:
 	case <-time.After(30 * time.Second):
 		t.Fatal("acceptLoop did not return after cancel")
+	}
+}
+
+func TestProxyConnRetriesAfterStaleSessionOpenFailure(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	backendAddr := echoBackend(t)
+
+	var poolActive atomic.Int32
+	pool := newSessionPool(&poolActive)
+	stale := &staleMuxSession{}
+	bad := pool.Add(1, stale, nil)
+	good := pool.Add(2, pairedSession(t, ctx, backendAddr), nil)
+
+	local, relay := net.Pipe()
+	defer func() { _ = local.Close() }()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		proxyConn(ctx, logx.Nop(), relay, pool, bad, pool.NextConnID())
+	}()
+
+	payload := bytes.Repeat([]byte("retry-ok"), 4096)
+	go func() { _, _ = local.Write(payload) }()
+
+	if err := local.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	got := make([]byte, len(payload))
+	if _, err := io.ReadFull(local, got); err != nil {
+		t.Fatalf("read through fallback session: %v", err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatal("fallback session payload mismatch")
+	}
+	if stale.opens.Load() != 1 {
+		t.Fatalf("stale OpenStream calls=%d, want 1", stale.opens.Load())
+	}
+	if !stale.closed.Load() {
+		t.Fatal("stale session was not closed after OpenStream failure")
+	}
+	if pool.Count() != 1 || pool.Pick() != good {
+		t.Fatalf("pool did not retain only healthy session: count=%d", pool.Count())
+	}
+	if poolActive.Load() != 1 {
+		t.Fatalf("pool active=%d, want 1 after invalidation", poolActive.Load())
+	}
+
+	_ = local.Close()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("proxyConn did not return")
 	}
 }
 
