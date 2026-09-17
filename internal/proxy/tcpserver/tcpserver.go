@@ -17,7 +17,7 @@ import (
 const backendDialTimeout = 10 * time.Second
 
 // Handle блокирует вызывающую горутину до закрытия сессии клиентом или ctx.
-func Handle(ctx context.Context, logger logx.Logger, dtlsConn net.Conn, connectAddr string, profile kcpmux.Profile) {
+func Handle(ctx context.Context, logger logx.Logger, dtlsConn net.Conn, connectAddr string, profile kcpmux.Profile, smuxProfile kcpmux.SmuxProfile) {
 	kcpSess, err := kcpmux.Accept(dtlsConn, profile)
 	if err != nil {
 		logger.Errorf("tcpserver: %s", err)
@@ -29,7 +29,8 @@ func Handle(ctx context.Context, logger logx.Logger, dtlsConn net.Conn, connectA
 		}
 	}()
 
-	smuxSess, err := smux.Server(kcpSess, kcpmux.ServerSmuxConfig())
+	smuxCfg := kcpmux.ServerSmuxConfig(smuxProfile)
+	smuxSess, err := smux.Server(kcpSess, smuxCfg)
 	if err != nil {
 		logger.Errorf("tcpserver: smux server: %s", err)
 		return
@@ -39,7 +40,7 @@ func Handle(ctx context.Context, logger logx.Logger, dtlsConn net.Conn, connectA
 			logger.Warnf("tcpserver: close smux session: %v", closeErr)
 		}
 	}()
-	logger.Debugf("tcpserver: smux session established")
+	logger.Debugf("tcpserver: smux session established profile=%s frame=%d", smuxProfile, smuxCfg.MaxFrameSize)
 
 	// ctx живёт всё время процесса - без stop() хук копился бы на каждую сессию.
 	stopOnCancel := context.AfterFunc(ctx, func() { _ = smuxSess.Close() })
