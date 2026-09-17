@@ -11,10 +11,19 @@ import (
 	"github.com/xtaci/smux"
 )
 
+// muxSession - минимальный контракт smux-сессии, который нужен пулу и proxyConn.
+// Интерфейс оставляет production-типом *smux.Session, но позволяет детерминированно
+// тестировать stale session: IsClosed ещё false, а OpenStream уже возвращает ошибку.
+type muxSession interface {
+	OpenStream() (*smux.Stream, error)
+	IsClosed() bool
+	Close() error
+}
+
 // pooledSession - одна сессия TURN+DTLS+KCP+smux.
 type pooledSession struct {
 	id      int
-	sess    *smux.Session
+	sess    muxSession
 	traffic *stats.Stats
 	active  atomic.Int32
 }
@@ -47,7 +56,7 @@ func (p *sessionPool) publishActive() {
 // Ready закрывается на первой поднявшейся сессии.
 func (p *sessionPool) Ready() <-chan struct{} { return p.ready }
 
-func (p *sessionPool) Add(id int, s *smux.Session, traffic *stats.Stats) *pooledSession {
+func (p *sessionPool) Add(id int, s muxSession, traffic *stats.Stats) *pooledSession {
 	ps := &pooledSession{id: id, sess: s, traffic: traffic}
 	p.mu.Lock()
 	p.sessions = append(p.sessions, ps)
@@ -68,6 +77,30 @@ func (p *sessionPool) Remove(ps *pooledSession) {
 	}
 	p.publishActive()
 	p.mu.Unlock()
+}
+
+// Invalidate немедленно выводит сессию из ротации и закрывает её. Это важно для
+// stale socket: smux.IsClosed может ещё быть false, хотя OpenStream уже получил RST.
+// maintainSession позднее увидит закрытие и поднимет свежий TURN стек.
+func (p *sessionPool) Invalidate(ps *pooledSession) bool {
+	if ps == nil {
+		return false
+	}
+
+	removed := false
+	p.mu.Lock()
+	for i, s := range p.sessions {
+		if s == ps {
+			p.sessions = append(p.sessions[:i], p.sessions[i+1:]...)
+			removed = true
+			break
+		}
+	}
+	p.publishActive()
+	p.mu.Unlock()
+
+	_ = ps.sess.Close()
+	return removed
 }
 
 // Pick - nil, если живых сессий нет.
