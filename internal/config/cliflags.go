@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/samosvalishe/free-turn-proxy/internal/transport/kcpmux"
 	"github.com/samosvalishe/free-turn-proxy/internal/uri"
 	"github.com/samosvalishe/free-turn-proxy/internal/wire/rtpopus"
 )
@@ -105,6 +106,7 @@ func ParseServer(args []string, errOut io.Writer) (*Server, error) {
 	obfTiming := fs.Duration("obf-timing", 0, "межпакетная задержка для RTP-мимикрии (напр. 10ms); 0=выкл")
 	debug := fs.Bool("debug", false, "подробные debug-логи")
 	clientsFile := fs.String("clients-file", "", "путь к файлу clients.json для авторизации по Client ID")
+	smuxProfile := fs.String("smux-profile", string(def.Smux.Profile), "server->client smux: low (8KiB, latency) | medium (16KiB, balanced) | high (32KiB, throughput)")
 	kcp := registerKCPFlags(fs, def.KCP.Profile)
 
 	if err := fs.Parse(args); err != nil {
@@ -115,6 +117,9 @@ func ParseServer(args []string, errOut io.Writer) (*Server, error) {
 	case ModeUDP, ModeTCP:
 	default:
 		return nil, fmt.Errorf("invalid -mode value %q: must be %s | %s", *mode, ModeUDP, ModeTCP)
+	}
+	if err := kcpmux.ValidateSmuxProfile(kcpmux.SmuxProfile(*smuxProfile)); err != nil {
+		return nil, err
 	}
 
 	s := &Server{
@@ -130,6 +135,7 @@ func ParseServer(args []string, errOut io.Writer) (*Server, error) {
 		},
 		Log:         LogOpts{Debug: *debug},
 		KCP:         KCPOpts{Profile: kcp.profile()},
+		Smux:        SmuxOpts{Profile: kcpmux.SmuxProfile(*smuxProfile)},
 		ClientsFile: *clientsFile,
 	}
 
