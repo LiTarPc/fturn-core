@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -56,7 +57,7 @@ func TestIsAuthErrorTurnCode(t *testing.T) {
 	t.Parallel()
 
 	codes := map[stun.ErrorCode]bool{
-		stun.CodeAllocQuotaReached:    true,
+		stun.CodeAllocQuotaReached:    false,
 		stun.CodeUnauthorized:         true,
 		stun.CodeStaleNonce:           true,
 		stun.CodeWrongCredentials:     true,
@@ -266,5 +267,21 @@ func TestDropCredentialsClearsCacheOnce(t *testing.T) {
 	// Второй стрим того же кэша не должен повторять сброс: иначе один обрыв даёт N строк.
 	if cache.Invalidate() {
 		t.Fatal("empty cache reported as invalidated")
+	}
+}
+
+func TestFetchStopsAfterNetworkTimeout(t *testing.T) {
+	calls := 0
+	c := newTestClient(t, func(context.Context, string, int, VKCredentials, tlsclient.CookieJar) (string, string, []string, error) {
+		calls++
+		return "", "", nil, &net.DNSError{Err: "i/o timeout", IsTimeout: true}
+	})
+	_, _, _, err := c.fetch(context.Background(), "link", 1)
+	if err == nil || calls != 1 {
+		t.Fatalf("first fetch: calls=%d err=%v", calls, err)
+	}
+	_, _, _, err = c.fetch(context.Background(), "link", 2)
+	if err == nil || calls != 1 {
+		t.Fatalf("backoff fetch: calls=%d err=%v", calls, err)
 	}
 }
