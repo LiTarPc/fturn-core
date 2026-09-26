@@ -264,7 +264,7 @@ func TestProxyConnCountsApplicationBytes(t *testing.T) {
 
 	local, remote := net.Pipe()
 	defer func() { _ = local.Close() }()
-	go proxyConn(ctx, logx.Nop(), remote, ps, 1)
+	go proxyConn(ctx, logx.Nop(), remote, pool, ps, 1)
 
 	payload := []byte("hello over smux")
 	if _, err := local.Write(payload); err != nil {

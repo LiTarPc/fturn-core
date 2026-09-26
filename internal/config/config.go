@@ -4,6 +4,7 @@ package config
 import (
 	"time"
 
+	"github.com/samosvalishe/free-turn-proxy/internal/transport/kcpmux"
 	"github.com/samosvalishe/free-turn-proxy/internal/tunnel"
 )
 
@@ -46,6 +47,10 @@ type ProxyOpts struct {
 	Listen  string
 	Connect string
 	Peer    string
+}
+
+type SmuxOpts struct {
+	Profile kcpmux.SmuxProfile
 }
 
 type Platform string
@@ -108,5 +113,6 @@ type Server struct {
 	Proxy       ProxyOpts
 	Log         LogOpts
 	KCP         KCPOpts
+	Smux        SmuxOpts
 	ClientsFile string
 }

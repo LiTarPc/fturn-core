@@ -223,11 +223,10 @@ func acceptLoop(ctx context.Context, deps *Deps, listener net.Listener, pool *se
 		}
 
 		connID := pool.NextConnID()
-		log.Debugf("[session %d] TCP accept #%d from=%s active=%d pool=%d",
-			ps.id, connID, conn.RemoteAddr(), ps.active.Add(1), pool.Count())
+		log.Debugf("[session %d] TCP accept #%d from=%s pool=%d", ps.id, connID, conn.RemoteAddr(), pool.Count())
 
 		wg.Go(func() {
-			_ = safego.Run(log, func() { proxyConn(ctx, log, conn, ps, connID) })
+			_ = safego.Run(log, func() { proxyConn(ctx, log, conn, pool, ps, connID) })
 		})
 	}
 }
@@ -242,13 +241,53 @@ func nextBackoff(d time.Duration) time.Duration {
 	return d
 }
 
-func proxyConn(ctx context.Context, log logx.Logger, conn net.Conn, ps *pooledSession, connID uint64) {
+func proxyConn(ctx context.Context, log logx.Logger, conn net.Conn, pool *sessionPool, initial *pooledSession, connID uint64) {
 	defer func() { _ = conn.Close() }()
-	defer func() { log.Debugf("[session %d] TCP close #%d active=%d", ps.id, connID, ps.active.Add(-1)) }()
 
-	stream, err := ps.sess.OpenStream()
-	if err != nil {
-		log.Errorf("[session %d] smux open stream for TCP #%d: %s", ps.id, connID, err)
+	ps := initial
+	active := false
+	setActive := func(next *pooledSession) {
+		ps = next
+		if ps != nil {
+			ps.active.Add(1)
+			active = true
+		}
+	}
+	clearActive := func() {
+		if active && ps != nil {
+			log.Debugf("[session %d] TCP close #%d active=%d", ps.id, connID, ps.active.Add(-1))
+			active = false
+		}
+	}
+	setActive(ps)
+	defer clearActive()
+
+	var stream *smux.Stream
+	for attempt := 0; attempt < 2; attempt++ {
+		var err error
+		stream, err = ps.sess.OpenStream()
+		if err == nil {
+			break
+		}
+
+		failedID := ps.id
+		log.Errorf("[session %d] smux open stream for TCP #%d: %s", failedID, connID, err)
+		clearActive()
+		removed := pool.Invalidate(ps)
+		log.Warnf("[session %d] marking session dead after OpenStream failure (removed=%v, pool=%d)", failedID, removed, pool.Count())
+
+		if attempt != 0 || ctx.Err() != nil {
+			return
+		}
+		next := pool.Pick()
+		if next == nil {
+			log.Errorf("TCP #%d: no alternate session after failure of session %d", connID, failedID)
+			return
+		}
+		log.Warnf("TCP #%d: retrying OpenStream on session %d after session %d failed", connID, next.id, failedID)
+		setActive(next)
+	}
+	if stream == nil {
 		return
 	}
 	defer func() { _ = stream.Close() }()

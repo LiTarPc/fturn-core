@@ -20,6 +20,7 @@ import (
 	"github.com/samosvalishe/free-turn-proxy/internal/proxy/tcpserver"
 	"github.com/samosvalishe/free-turn-proxy/internal/proxy/udpserver"
 	"github.com/samosvalishe/free-turn-proxy/internal/transport/dtlsdial"
+	"github.com/samosvalishe/free-turn-proxy/internal/transport/kcpmux"
 	"github.com/samosvalishe/free-turn-proxy/internal/wire"
 	"github.com/samosvalishe/free-turn-proxy/internal/wire/rtpopus"
 )
@@ -77,6 +78,9 @@ func main() {
 	}
 	logger.Infof("Starting server listen=%s connect=%s obf-profile=%s",
 		cfg.Proxy.Listen, cfg.Proxy.Connect, cfg.Obf.Profile)
+	if cfg.Proxy.Mode == config.ProxyModeTCP {
+		logger.Infof("TCP smux profile=%s frame=%d", cfg.Smux.Profile, kcpmux.SmuxFrameSize(cfg.Smux.Profile))
+	}
 	if !cfg.Obf.Enabled() {
 		logger.Warnf("running with -obf-profile=none: any client reaching %s can relay to %s (no shared-key auth)", cfg.Proxy.Listen, cfg.Proxy.Connect)
 	}
@@ -243,7 +247,7 @@ func handleAccepted(ctx context.Context, logger logx.Logger, db *clientsdb.DB, c
 
 	logger.Infof("Session up: client=%s from=%s", clientID, conn.RemoteAddr())
 	if cfg.Proxy.Mode == config.ProxyModeTCP {
-		tcpserver.Handle(ctx, logger, dtlsConn, cfg.Proxy.Connect, cfg.KCP.Profile)
+		tcpserver.Handle(ctx, logger, dtlsConn, cfg.Proxy.Connect, cfg.KCP.Profile, cfg.Smux.Profile)
 	} else {
 		udpserver.Handle(ctx, logger, conn, cfg.Proxy.Connect)
 	}
