@@ -206,8 +206,7 @@ func (c *Client) LockoutUntilUnix() int64 {
 	return c.lockout.Load()
 }
 
-// BackoffUntilUnix - алиас LockoutUntilUnix: lockout глобальный, а provider.Provider
-// требует no-arg сигнатуру (без streamID).
+// BackoffUntilUnix возвращает ближайший общий запрет запросов к VK.
 func (c *Client) BackoffUntilUnix() int64 {
 	return max(c.LockoutUntilUnix(), c.networkPauseUntil.Load())
 }
