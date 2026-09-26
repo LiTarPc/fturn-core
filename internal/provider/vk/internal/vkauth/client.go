@@ -45,7 +45,7 @@ type Client struct {
 
 	store *Store
 
-	lockout          atomic.Int64
+	lockout           atomic.Int64
 	networkPauseUntil atomic.Int64
 
 	personaMu sync.RWMutex
