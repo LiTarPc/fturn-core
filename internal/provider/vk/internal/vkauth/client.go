@@ -45,7 +45,8 @@ type Client struct {
 
 	store *Store
 
-	lockout atomic.Int64
+	lockout          atomic.Int64
+	networkPauseUntil atomic.Int64
 
 	personaMu sync.RWMutex
 	identity  browserprofile.Identity
@@ -207,7 +208,9 @@ func (c *Client) LockoutUntilUnix() int64 {
 
 // BackoffUntilUnix - алиас LockoutUntilUnix: lockout глобальный, а provider.Provider
 // требует no-arg сигнатуру (без streamID).
-func (c *Client) BackoffUntilUnix() int64 { return c.LockoutUntilUnix() }
+func (c *Client) BackoffUntilUnix() int64 {
+	return max(c.LockoutUntilUnix(), c.networkPauseUntil.Load())
+}
 
 func (*Client) Name() string { return "vk" }
 
@@ -242,6 +245,9 @@ func (c *Client) fetchSerialized(ctx context.Context, link string, streamID int)
 }
 
 func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, string, []string, error) {
+	if time.Now().Unix() < c.networkPauseUntil.Load() {
+		return "", "", nil, fmt.Errorf("VK network temporarily unavailable")
+	}
 	if time.Now().Unix() < c.lockout.Load() {
 		return "", "", nil, fmt.Errorf("%w: %w", ErrCaptchaWaitRequired, ErrLockoutActive)
 	}
@@ -265,6 +271,11 @@ func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, 
 			return "", "", nil, err
 		}
 		c.log.Warnf("[STREAM %d] [VK Auth] Failed with client_id=%s: %v", streamID, creds.ClientID, err)
+		if isNetworkTimeout(err) {
+			c.networkPauseUntil.Store(time.Now().Add(30 * time.Second).Unix())
+			c.log.Warnf("[STREAM %d] [VK Auth] Network timeout; pausing VK requests for 30 seconds", streamID)
+			return "", "", nil, err
+		}
 
 		// Личность сменилась - тот же client_id проходится заново с чистыми
 		// куками, пока не кончатся режимы решения captcha.
@@ -296,4 +307,12 @@ func vkDelayRandom(ctx context.Context, minMs, maxMs int) error {
 	case <-time.After(time.Duration(ms) * time.Millisecond):
 		return nil
 	}
+}
+
+func isNetworkTimeout(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	return (errors.As(err, &netErr) && netErr.Timeout()) || strings.Contains(err.Error(), "i/o timeout")
 }
