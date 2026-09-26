@@ -88,7 +88,7 @@ func TURNLoop(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr
 					deps.fatal(err)
 					return
 				}
-				if errors.Is(err, provider.ErrBackoffActive) {
+				if errors.Is(err, provider.ErrBackoffActive) || deps.Auth.BackoffUntilUnix() > time.Now().Unix() {
 					lockoutEnd := deps.Auth.BackoffUntilUnix()
 					var sleepDuration time.Duration
 					if lockoutEnd > 0 {
