@@ -4,6 +4,7 @@ package tcpserver
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"sync"
@@ -68,6 +69,13 @@ func Handle(ctx context.Context, logger logx.Logger, dtlsConn net.Conn, connectA
 
 func handleStream(ctx context.Context, logger logx.Logger, s *smux.Stream, connectAddr string) {
 	defer func() {
+		// После двух FIN smux сам убирает поток. Повторный Close может обогнать
+		// ещё не доставленные кадры ответа на другой стороне.
+		select {
+		case <-s.GetDieCh():
+			return
+		default:
+		}
 		if err := s.Close(); err != nil && err != smux.ErrGoAway {
 			logger.Warnf("tcpserver: close smux stream: %v", err)
 		}
@@ -122,7 +130,8 @@ func relayHalfClose(ctx context.Context, left, right net.Conn, errf func(format 
 
 	copySide := func(dst, src net.Conn, direction string) {
 		_, err := io.Copy(dst, src)
-		if err != nil {
+		// smux.Stream.WriteTo может вернуть io.EOF вместо nil при штатном FIN.
+		if err != nil && !errors.Is(err, io.EOF) {
 			if ctx.Err() == nil && errf != nil {
 				errf("tcpserver: %s copy: %v", direction, err)
 			}

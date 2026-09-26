@@ -49,3 +49,6 @@ require (
 )
 
 tool golang.org/x/mobile/cmd/gobind
+
+// smux v1.5.57 drops unread response data when both sides half-close.
+replace github.com/xtaci/smux => ./third_party/smux
