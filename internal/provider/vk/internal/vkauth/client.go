@@ -255,6 +255,7 @@ func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, 
 
 	var lastErr error
 	burns := 0
+	outdatedRetried := make([]bool, len(c.credentials))
 	jar := personanet.NewCookieJar()
 	for i := 0; i < len(c.credentials); {
 		creds := c.credentials[i]
@@ -275,6 +276,15 @@ func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, 
 			c.log.Warnf("[STREAM %d] [VK Auth] Network timeout; pausing VK requests for 30 seconds", streamID)
 			return "", "", nil, err
 		}
+		// The call token is short-lived. Restart the chain once to obtain a new
+		// one before trying another client_id. This is not a captcha failure.
+		if errors.Is(err, ErrAnonymTokenOutdated) && !outdatedRetried[i] {
+			outdatedRetried[i] = true
+			c.captchaAttempt = 0
+			jar = personanet.NewCookieJar()
+			c.log.Infof("[STREAM %d] [VK Auth] Call token expired; retrying with a fresh session", streamID)
+			continue
+		}
 
 		// Личность сменилась - тот же client_id проходится заново с чистыми
 		// куками, пока не кончатся режимы решения captcha.
@@ -282,6 +292,11 @@ func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, 
 			burns++
 			jar = personanet.NewCookieJar()
 			continue
+		}
+		if !errors.Is(err, ErrPersonaBurned) {
+			// An unrelated failure after a solved captcha must not force the next
+			// client_id straight into the manual captcha mode.
+			c.captchaAttempt = 0
 		}
 		i++
 

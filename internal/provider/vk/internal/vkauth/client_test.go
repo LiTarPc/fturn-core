@@ -285,3 +285,71 @@ func TestFetchStopsAfterNetworkTimeout(t *testing.T) {
 		t.Fatalf("backoff fetch: calls=%d err=%v", calls, err)
 	}
 }
+
+func TestFetchRetriesOutdatedCallTokenWithFreshSession(t *testing.T) {
+	var ids []string
+	var jars []tlsclient.CookieJar
+	var c *Client
+	c = newTestClient(t, func(_ context.Context, _ string, _ int, creds VKCredentials, jar tlsclient.CookieJar) (string, string, []string, error) {
+		ids = append(ids, creds.ClientID)
+		jars = append(jars, jar)
+		if len(ids) == 1 {
+			c.captchaAttempt = 1 // automatic solve preceded the expired token
+			return "", "", nil, ErrAnonymTokenOutdated
+		}
+		if c.captchaAttempt != 0 {
+			t.Fatalf("retry started at manual captcha attempt %d", c.captchaAttempt)
+		}
+		return "u", "p", []string{"server:443"}, nil
+	})
+	if _, _, _, err := c.fetch(context.Background(), "link", 1); err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 2 || ids[0] != "a" || ids[1] != "a" {
+		t.Fatalf("unexpected credential order: %v", ids)
+	}
+	if jars[0] == jars[1] {
+		t.Fatal("retry reused the expired session")
+	}
+}
+
+func TestFetchBoundsOutdatedCallTokenRetryAndResetsCaptcha(t *testing.T) {
+	var ids []string
+	c := newTestClient(t, func(_ context.Context, _ string, _ int, creds VKCredentials, _ tlsclient.CookieJar) (string, string, []string, error) {
+		ids = append(ids, creds.ClientID)
+		return "", "", nil, ErrAnonymTokenOutdated
+	})
+	if _, _, _, err := c.fetch(context.Background(), "link", 1); !errors.Is(err, ErrAnonymTokenOutdated) {
+		t.Fatalf("fetch error = %v", err)
+	}
+	if got, want := fmt.Sprint(ids), "[a a b b c c]"; got != want {
+		t.Fatalf("credential order = %s, want %s", got, want)
+	}
+
+	c.tokenChain = func(_ context.Context, _ string, _ int, creds VKCredentials, _ tlsclient.CookieJar) (string, string, []string, error) {
+		if creds.ClientID == "a" {
+			c.captchaAttempt = 1 // auto captcha succeeded before an unrelated VK error
+			return "", "", nil, errors.New("VK response missing call data")
+		}
+		if c.captchaAttempt != 0 {
+			t.Fatalf("next client_id started at manual captcha attempt %d", c.captchaAttempt)
+		}
+		return "u", "p", []string{"server:443"}, nil
+	}
+	if _, _, _, err := c.fetch(context.Background(), "link", 2); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMissingTurnServerErrorClassifiesExpiredToken(t *testing.T) {
+	err := missingTurnServerError(map[string]any{
+		"error_code": float64(100),
+		"error_msg":  "PARAM : error.webrtc.auth.anonym_token.outdated",
+	})
+	if !errors.Is(err, ErrAnonymTokenOutdated) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if errors.Is(missingTurnServerError(map[string]any{"error_msg": "unrelated"}), ErrAnonymTokenOutdated) {
+		t.Fatal("unrelated error classified as expired token")
+	}
+}
