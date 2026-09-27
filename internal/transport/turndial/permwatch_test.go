@@ -35,6 +35,25 @@ func TestPermWatchFiresAfterThreshold(t *testing.T) {
 	}
 }
 
+func TestPermWatchRecyclesAfterRepeatedSavedBinding400(t *testing.T) {
+	f, fired := newTestWatch(2)
+	log := f.NewLogger(turncScope)
+
+	msg := permSavedBind400Marker + " %s on channel %d; keeping binding ready"
+	log.Warnf(msg, "192.0.2.1:56660", 16384)
+	if fired.Load() != 0 {
+		t.Fatalf("fired too early after first 400: %d", fired.Load())
+	}
+	log.Warnf(msg, "192.0.2.1:56660", 16384)
+	if fired.Load() != 1 {
+		t.Fatalf("expected recycle after repeated 400, got %d", fired.Load())
+	}
+	log.Warnf(msg, "192.0.2.1:56660", 16384)
+	if fired.Load() != 1 {
+		t.Fatalf("recycled more than once: %d", fired.Load())
+	}
+}
+
 func TestPermWatchResetOnSuccess(t *testing.T) {
 	f, fired := newTestWatch(2)
 	log := f.NewLogger(turncScope)
