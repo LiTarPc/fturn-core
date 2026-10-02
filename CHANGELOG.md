@@ -1,5 +1,23 @@
 # Changelog
 
+## [4.2.0](https://github.com/LiTarPc/fturn-core/compare/v4.1.3...v4.2.0) (2026-10-02)
+
+### Bug Fixes
+
+* Refresh ChannelBind every two minutes, with idle checks every ten seconds, before the five-minute TURN permission expires.
+* Validate Refresh responses and errors, retry stale nonce, and recompute renewal timing from the server's returned lifetime.
+* Recycle allocations after repeated allocation or channel renewal failures, with independent failure counters.
+* Replace stale server sessions by client ID, mode and stable stream number when a relay reconnects.
+
+### Diagnostics and validation
+
+* Log Refresh/ChannelBind transaction timing, response types, error codes, lifetimes and renewal deadlines.
+* Add real DTLS reconnect coverage and TURN renewal regressions; run race tests and vet before publishing release assets.
+
+This version is initially published as a prerelease. Stable promotion and merging
+into main wait for the user's live VK TURN validation. Update the server first,
+then the client, to enable replacement of individual streams.
+
 ## [3.1.1](https://github.com/samosvalishe/free-turn-proxy/compare/v3.1.0...v3.1.1) (2026-08-19)
 
 
