@@ -81,9 +81,8 @@ func IsAuthError(err error) bool {
 	// Ответ TURN-сервера приходит типизированным - код берём из него, а не из текста.
 	if turnErr, ok := errors.AsType[*stun.TurnError](err); ok {
 		switch turnErr.ErrorCodeAttr.Code {
-		// 486 - квота аллокаций: креды живы, но новую сессию по ним не поднять.
 		case stun.CodeUnauthorized, stun.CodeWrongCredentials,
-			stun.CodeStaleNonce, stun.CodeAllocQuotaReached:
+			stun.CodeStaleNonce:
 			return true
 		default:
 			return false

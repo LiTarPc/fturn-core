@@ -28,7 +28,7 @@ func (c *Client) fetchTurnCreds(
 
 	tsRaw, ok := resp["turn_server"].(map[string]any)
 	if !ok {
-		return "", "", nil, fmt.Errorf("missing turn_server in response: %v", resp)
+		return "", "", nil, missingTurnServerError(resp)
 	}
 	user, ok = tsRaw["username"].(string)
 	if !ok {
@@ -61,4 +61,11 @@ func (c *Client) fetchTurnCreds(
 		return "", "", nil, fmt.Errorf("no valid TURN addresses found")
 	}
 	return user, pass, addresses, nil
+}
+
+func missingTurnServerError(resp map[string]any) error {
+	if msg, ok := resp["error_msg"].(string); ok && strings.Contains(msg, "error.webrtc.auth.anonym_token.outdated") {
+		return ErrAnonymTokenOutdated
+	}
+	return fmt.Errorf("missing turn_server in response: %v", resp)
 }

@@ -1,9 +1,11 @@
 package clientsdb
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"os"
 	"sync"
@@ -156,40 +158,79 @@ const (
 
 // WriteClientID отправляет Client ID (1 байт длины + строка + 1 байт режима).
 func WriteClientID(conn net.Conn, clientID string, mode byte) error {
+	return WriteClientHello(conn, clientID, mode, 0)
+}
+
+// WriteClientStream sends the stable, positive stream number used by a relay.
+func WriteClientStream(conn net.Conn, clientID string, mode byte, streamID int) error {
+	if streamID <= 0 || int64(streamID) > math.MaxUint32 {
+		return fmt.Errorf("invalid stream ID: %d", streamID)
+	}
+	return WriteClientHello(conn, clientID, mode, uint32(streamID))
+}
+
+// WriteClientHello sends an optional stable stream ID after the legacy ID/mode.
+// Stream zero retains the legacy record. Upgrade the server first to support
+// replacement and extended hellos with IDs longer than 251 bytes.
+func WriteClientHello(conn net.Conn, clientID string, mode byte, streamID uint32) error {
 	b := []byte(clientID)
 	if len(b) > 255 {
 		b = b[:255]
 	}
-	buf := make([]byte, 1+len(b)+1)
+	size := 1 + len(b) + 1
+	if streamID != 0 {
+		size += 4
+	}
+	buf := make([]byte, size)
 	buf[0] = byte(len(b)) //nolint:gosec // len(b) усечён до ≤255 выше
 	copy(buf[1:], b)
 	buf[1+len(b)] = mode
-	_, err := conn.Write(buf)
+	if streamID != 0 {
+		binary.BigEndian.PutUint32(buf[2+len(b):], streamID)
+	}
+	n, err := conn.Write(buf)
+	if err == nil && n != len(buf) {
+		err = io.ErrShortWrite
+	}
 	return err
 }
 
 // ReadClientID читает Client ID из первой DTLS-записи. Режим ModeUnset - клиент старше
 // тега, режим у него всегда udp.
 func ReadClientID(conn net.Conn) (string, byte, error) {
+	id, mode, _, err := ReadClientHello(conn)
+	return id, mode, err
+}
+
+// ReadClientHello reads one DTLS application record, accepting legacy hellos.
+// A legacy client has stream ID zero and cannot safely replace a specific stream.
+func ReadClientHello(conn net.Conn) (string, byte, uint32, error) {
 	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	defer func() { _ = conn.SetReadDeadline(time.Time{}) }()
 
-	buf := make([]byte, 257)
+	buf := make([]byte, 262)
 	n, err := conn.Read(buf)
 	if err != nil {
-		return "", ModeUnset, err
+		return "", ModeUnset, 0, err
 	}
 	if n == 0 {
-		return "", ModeUnset, nil
+		return "", ModeUnset, 0, nil
 	}
-
 	l := int(buf[0])
 	if n < 1+l {
-		return "", ModeUnset, io.ErrUnexpectedEOF
+		return "", ModeUnset, 0, io.ErrUnexpectedEOF
 	}
 	mode := ModeUnset
 	if n > 1+l {
 		mode = buf[1+l]
 	}
-	return string(buf[1 : 1+l]), mode, nil
+	var streamID uint32
+	switch n - (1 + l) {
+	case 0, 1:
+	case 5:
+		streamID = binary.BigEndian.Uint32(buf[2+l : n])
+	default:
+		return "", ModeUnset, 0, fmt.Errorf("invalid client hello extension length: %d", n-(1+l))
+	}
+	return string(buf[1 : 1+l]), mode, streamID, nil
 }

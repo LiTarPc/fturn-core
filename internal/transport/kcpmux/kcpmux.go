@@ -12,8 +12,48 @@ import (
 	"github.com/xtaci/smux"
 )
 
-// acceptTimeout ограничивает ожидание первой KCP-датаграммы от клиента на сервере.
 const acceptTimeout = 30 * time.Second
+
+// SmuxProfile управляет только размером исходящих server->client smux frames.
+// Это локальная настройка writer-а: peer читает длину frame из smux-заголовка,
+// поэтому клиенту не требуется использовать тот же профиль.
+type SmuxProfile string
+
+const (
+	SmuxProfileLow    SmuxProfile = "low"
+	SmuxProfileMedium SmuxProfile = "medium"
+	SmuxProfileHigh   SmuxProfile = "high"
+
+	smuxFrameLow    = 8 * 1024
+	smuxFrameMedium = 16 * 1024
+	smuxFrameHigh   = 32 * 1024
+)
+
+func DefaultSmuxProfile() SmuxProfile { return SmuxProfileMedium }
+
+func ValidateSmuxProfile(profile SmuxProfile) error {
+	switch profile {
+	case SmuxProfileLow, SmuxProfileMedium, SmuxProfileHigh:
+		return nil
+	default:
+		return fmt.Errorf("invalid -smux-profile value %q: must be low | medium | high", profile)
+	}
+}
+
+// SmuxFrameSize возвращает server->client scheduling quantum для профиля.
+// Неизвестное значение безопасно сваливается в medium; CLI валидирует профиль заранее.
+func SmuxFrameSize(profile SmuxProfile) int {
+	switch profile {
+	case SmuxProfileLow:
+		return smuxFrameLow
+	case SmuxProfileHigh:
+		return smuxFrameHigh
+	case SmuxProfileMedium:
+		fallthrough
+	default:
+		return smuxFrameMedium
+	}
+}
 
 // Profile - параметры конгестии KCP; должен совпадать по смыслу с флагами -kcp-*.
 type Profile struct {
@@ -52,11 +92,9 @@ func (d *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	n, err := d.conn.Read(b)
 	return n, d.conn.RemoteAddr(), err
 }
-
 func (d *PacketConn) WriteTo(b []byte, _ net.Addr) (int, error) {
 	return d.conn.Write(b)
 }
-
 func (d *PacketConn) Close() error                       { return d.conn.Close() }
 func (d *PacketConn) LocalAddr() net.Addr                { return d.conn.LocalAddr() }
 func (d *PacketConn) SetDeadline(t time.Time) error      { return d.conn.SetDeadline(t) }
@@ -115,13 +153,21 @@ func Accept(conn net.Conn, profile Profile) (*ServerSession, error) {
 	return &ServerSession{UDPSession: sess, listener: listener}, nil
 }
 
-// SmuxConfig - параметры smux, общие для клиента и сервера (буферы должны совпадать).
+// SmuxConfig - базовые параметры smux для обеих сторон протокола.
 func SmuxConfig() *smux.Config {
 	cfg := smux.DefaultConfig()
 	cfg.MaxReceiveBuffer = 4 * 1024 * 1024
 	cfg.MaxStreamBuffer = 1 * 1024 * 1024
 	cfg.KeepAliveInterval = 10 * time.Second
 	cfg.KeepAliveTimeout = 30 * time.Second
+	return cfg
+}
+
+// ServerSmuxConfig оставляет wire-совместимость с клиентом, меняя только локальную
+// нарезку server->client Write. MaxFrameSize не обязан совпадать у peer.
+func ServerSmuxConfig(profile SmuxProfile) *smux.Config {
+	cfg := SmuxConfig()
+	cfg.MaxFrameSize = SmuxFrameSize(profile)
 	return cfg
 }
 

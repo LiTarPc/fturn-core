@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/turn/v5"
@@ -29,9 +30,22 @@ type Config struct {
 type Stream struct {
 	Relay         net.PacketConn
 	ServerUDPAddr *net.UDPAddr
-	// PermDead закрывается при стойком провале ChannelBind refresh (relay блэкхолит трафик).
+	// PermDead closes on failed TURN renewal or a stopped transport receiver.
 	PermDead <-chan struct{}
 	close    func() error
+}
+
+// closeOncePacketConn preserves the first deallocation result when both the
+// DTLS layer and the session controller close the same relay.
+type closeOncePacketConn struct {
+	net.PacketConn
+	once sync.Once
+	err  error
+}
+
+func (c *closeOncePacketConn) Close() error {
+	c.once.Do(func() { c.err = c.PacketConn.Close() })
+	return c.err
 }
 
 // Close освобождает аллокацию, TURN-клиент и транспортное соединение.
@@ -106,10 +120,13 @@ func Open(ctx context.Context, cfg Config, peer *net.UDPAddr, user, pass, rawAdd
 	// VK отбрасывает CreatePermission refresh с кодом 400; канал поддерживается через ChannelBind.
 	permDead := make(chan struct{})
 	var permOnce sync.Once
+	var closing atomic.Bool
+	connectedAt := time.Now()
+	markDead := func() { permOnce.Do(func() { close(permDead) }) }
 	loggerFactory := &permWatchFactory{
 		inner:     &logxFactory{log: cfg.Log, stream: cfg.StreamID},
 		threshold: permFailThreshold,
-		onDead:    func() { permOnce.Do(func() { close(permDead) }) },
+		onDead:    markDead,
 	}
 	client, err := turn.NewClient(&turn.ClientConfig{
 		STUNServerAddr:            turnServerAddr,
@@ -120,7 +137,16 @@ func Open(ctx context.Context, cfg Config, peer *net.UDPAddr, user, pass, rawAdd
 		Password:                  pass,
 		RequestedAddressFamily:    addrFamily,
 		PermissionRefreshInterval: 24 * time.Hour,
+		BindingRefreshInterval:    2 * time.Minute,
+		BindingCheckInterval:      10 * time.Second,
 		LoggerFactory:             loggerFactory,
+		OnListenerError: func(err error) {
+			if closing.Load() {
+				return
+			}
+			loggerFactory.inner.NewLogger(turncScope).Warnf("TURN receiver stopped: server=%s transport_udp=%t connection_age=%s error=%v; reconnecting", turnServerAddr, cfg.TransportUDP, time.Since(connectedAt).Truncate(time.Millisecond), err)
+			markDead()
+		},
 	})
 	if err != nil {
 		if cerr := closeConn(); cerr != nil {
@@ -129,6 +155,7 @@ func Open(ctx context.Context, cfg Config, peer *net.UDPAddr, user, pass, rawAdd
 		return nil, fmt.Errorf("create TURN client: %w", err)
 	}
 	if err = client.Listen(); err != nil {
+		closing.Store(true)
 		client.Close()
 		if cerr := closeConn(); cerr != nil {
 			err = fmt.Errorf("%w (close: %v)", err, cerr)
@@ -137,6 +164,7 @@ func Open(ctx context.Context, cfg Config, peer *net.UDPAddr, user, pass, rawAdd
 	}
 	relay, err := client.Allocate()
 	if err != nil {
+		closing.Store(true)
 		client.Close()
 		if cerr := closeConn(); cerr != nil {
 			err = fmt.Errorf("%w (close: %v)", err, cerr)
@@ -144,20 +172,24 @@ func Open(ctx context.Context, cfg Config, peer *net.UDPAddr, user, pass, rawAdd
 		return nil, fmt.Errorf("TURN allocate: %w", err)
 	}
 
+	sharedRelay := &closeOncePacketConn{PacketConn: relay}
+	var closeOnce sync.Once
+	var closeErr error
+
 	return &Stream{
-		Relay:         relay,
+		Relay:         sharedRelay,
 		ServerUDPAddr: turnServerUDPAddr,
 		PermDead:      permDead,
 		close: func() error {
-			var firstErr error
-			if cerr := relay.Close(); cerr != nil {
-				firstErr = cerr
-			}
-			client.Close()
-			if cerr := closeConn(); cerr != nil && firstErr == nil {
-				firstErr = cerr
-			}
-			return firstErr
+			closeOnce.Do(func() {
+				closing.Store(true)
+				closeErr = sharedRelay.Close()
+				client.Close()
+				if cerr := closeConn(); cerr != nil && closeErr == nil {
+					closeErr = cerr
+				}
+			})
+			return closeErr
 		},
 	}, nil
 }
