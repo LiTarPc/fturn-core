@@ -53,3 +53,26 @@ responses, changed lifetimes and timer intervals, channel renewal during idle,
 hello compatibility, and real DTLS reconnection with UDP backend traffic. The
 existing TURN/TCP integration test covers relay transport recovery. Live VK
 provider behavior still requires the runtime check above.
+
+## Live validation follow-up (4.2.0-rc.2)
+
+The October 2 live capture shows all 20 allocation Refresh requests returning
+success with LIFETIME=600. ChannelBind also succeeds around 2:10 and 4:20, leaving
+permissions valid until roughly 9:20. Some TURN TCP sockets nevertheless receive
+RST immediately after the five-minute allocation refresh; others time out.
+This does not establish whether VK, an intermediary, or a network policy causes
+the reset, or whether it is triggered by Refresh versus connection age.
+
+Previously the TURN listener simply exited on such a read error. The session
+could remain selectable until an application write or the smux timeout exposed
+the failure. A listener error now cancels pending STUN transactions and immediately
+signals the TCP/UDP session controller to retire the allocation and reconnect.
+Intentional local shutdown does not report a new failure. A warning includes
+TURN server, transport type, connection age and original error for the next run.
+This improves recovery; it does not claim to prevent the external socket reset
+or migrate TCP connections that were already using that socket.
+
+The relay close operation also retains its first deallocation result across DTLS
+shutdown and session cleanup. A second close no longer reports "already closed"
+as an allocation failure and unnecessarily invalidates shared credentials.
+Actual deallocation transport errors still reach the credential cleanup logic.

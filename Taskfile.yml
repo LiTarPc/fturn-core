@@ -69,7 +69,7 @@ tasks:
     desc: Run unit tests with race detector
     cmds:
       - go test -race -count=1 ./...
-      - go -C third_party/turn test -race -count=1 ./internal/client
+      - go -C third_party/turn test -race -count=1 ./...
 
   test:cover:
     desc: Run tests with coverage report (cover.html)

@@ -275,7 +275,7 @@ func oneTURN(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr,
 		select {
 		case <-turnctx.Done():
 		case <-stream.PermDead:
-			deps.log().Warnf("[STREAM %d] TURN channel-bind умер - рецикл allocation", streamID)
+			deps.log().Warnf("[STREAM %d] TURN receiver or renewal failed; recycling allocation", streamID)
 			turncancel()
 		}
 		// conn2 молчит, пока приложение не шлёт: без дедлайна его читатель досидел бы

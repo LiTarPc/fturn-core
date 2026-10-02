@@ -385,7 +385,7 @@ func awaitDead(ctx context.Context, log logx.Logger, s *session, id int) bool {
 		case <-ctx.Done():
 			return false
 		case <-s.permDead:
-			log.Warnf("[session %d] TURN channel-bind умер - рецикл allocation", id)
+			log.Warnf("[session %d] TURN receiver or renewal failed; recycling allocation", id)
 			return true
 		case <-t.C:
 			if s.smux.IsClosed() {

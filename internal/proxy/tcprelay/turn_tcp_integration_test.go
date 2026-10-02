@@ -248,23 +248,6 @@ func forceRST(t *testing.T, conn net.Conn) {
 	}
 }
 
-func waitSessionTransportFailure(t *testing.T, ps *pooledSession) {
-	t.Helper()
-	deadline := time.Now().Add(integrationWait)
-	for time.Now().Before(deadline) {
-		if ps.sess.IsClosed() {
-			return
-		}
-		stream, err := ps.sess.OpenStream()
-		if err != nil {
-			return
-		}
-		_ = stream.Close()
-		time.Sleep(250 * time.Millisecond)
-	}
-	t.Fatal("smux session did not observe TURN/TCP transport failure")
-}
-
 func TestTURNOverTCPRecoveryEndToEnd(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -329,7 +312,10 @@ func TestTURNOverTCPRecoveryEndToEnd(t *testing.T) {
 	// Simulate the real-world case where the remote TURN endpoint resets a pooled
 	// TCP transport. SetLinger(0)+Close on the accepted server-side socket emits RST.
 	forceRST(t, turnConn1)
-	waitSessionTransportFailure(t, ps1)
+	// No new OpenStream or application write may be needed to detect this.
+	eventually(t, 2*time.Second, "idle reset session removed from pool", func() bool {
+		return sessionByID(pool, 1) != ps1
+	})
 
 	// Force one already-accepted local TCP connection to start on the stale pooled
 	// session. proxyConn must invalidate it and retry the same local connection once

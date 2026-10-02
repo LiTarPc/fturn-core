@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.2.0-rc.2 (2026-10-02)
+
+* Retire TURN sessions immediately when their receiver stops, including remote TCP resets during idle periods.
+* Preserve the first relay deallocation result across DTLS and session cleanup; repeated close no longer falsely invalidates credentials.
+* Cancel pending STUN transactions when the listener exits and log connection age and transport failure reason.
+* Strengthen the TURN/TCP integration test to require stale session removal within two seconds without opening another stream.
+* Live logs confirm successful ChannelBind and allocation Refresh, but external TCP resets around five minutes remain under investigation. This candidate improves recovery and is not yet approved for stable promotion.
+
 ## [4.2.0](https://github.com/LiTarPc/fturn-core/compare/v4.1.3...v4.2.0) (2026-10-02)
 
 ### Bug Fixes

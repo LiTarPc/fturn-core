@@ -48,6 +48,11 @@ type ClientConfig struct {
 	Net            transport.Net
 	LoggerFactory  logging.LoggerFactory
 
+	// OnListenerError runs when Listen stops after a read or inbound handling error.
+	// Pending transactions are canceled before the callback. The caller owns the socket
+	// and should ignore errors caused by its own shutdown.
+	OnListenerError func(error)
+
 	// PermissionTimeout sets the refresh interval of permissions. Defaults to 2 minutes.
 	PermissionRefreshInterval time.Duration
 
@@ -76,20 +81,21 @@ type Client struct {
 	stunServerAddr net.Addr       // Read-only
 	turnServerAddr net.Addr       // Read-only
 
-	username      stun.Username          // Read-only
-	password      string                 // Read-only
-	realm         stun.Realm             // Read-only
-	integrity     stun.MessageIntegrity  // Read-only
-	software      stun.Software          // Read-only
-	trMap         *client.TransactionMap // Thread-safe
-	rto           time.Duration          // Read-only
-	relayedConn   *client.UDPConn        // Protected by mutex ***
-	tcpAllocation *client.TCPAllocation  // Protected by mutex ***
-	allocTryLock  client.TryLock         // Thread-safe
-	listenTryLock client.TryLock         // Thread-safe
-	mutex         sync.RWMutex           // Thread-safe
-	mutexTrMap    sync.Mutex             // Thread-safe
-	log           logging.LeveledLogger  // Read-only
+	username        stun.Username          // Read-only
+	password        string                 // Read-only
+	realm           stun.Realm             // Read-only
+	integrity       stun.MessageIntegrity  // Read-only
+	software        stun.Software          // Read-only
+	trMap           *client.TransactionMap // Thread-safe
+	rto             time.Duration          // Read-only
+	relayedConn     *client.UDPConn        // Protected by mutex ***
+	tcpAllocation   *client.TCPAllocation  // Protected by mutex ***
+	allocTryLock    client.TryLock         // Thread-safe
+	listenTryLock   client.TryLock         // Thread-safe
+	mutex           sync.RWMutex           // Thread-safe
+	mutexTrMap      sync.Mutex             // Thread-safe
+	log             logging.LeveledLogger  // Read-only
+	onListenerError func(error)            // Read-only
 
 	// If EVEN-PORT Attribute should be sent in Allocation
 	evenPort bool
@@ -253,6 +259,7 @@ func NewClient(config *ClientConfig) (*Client, error) { //nolint:gocyclo,cyclop
 		evenPort:                  config.evenPort,
 		reservationToken:          config.reservationToken,
 		requestedAddressFamily:    requestedAddressFamily,
+		onListenerError:           config.OnListenerError,
 		permissionRefreshInterval: config.PermissionRefreshInterval,
 		bindingRefreshInterval:    config.BindingRefreshInterval,
 		bindingCheckInterval:      config.BindingCheckInterval,
@@ -306,6 +313,7 @@ func (c *Client) Listen() error {
 			n, from, err := c.conn.ReadFrom(buf)
 			if err != nil {
 				c.log.Debugf("Failed to read: %s. Exiting loop", err)
+				c.listenerFailed(err)
 
 				break
 			}
@@ -313,6 +321,7 @@ func (c *Client) Listen() error {
 			_, err = c.HandleInbound(buf[:n], from)
 			if err != nil {
 				c.log.Debugf("Failed to handle inbound message: %s. Exiting loop", err)
+				c.listenerFailed(err)
 
 				break
 			}
@@ -322,6 +331,14 @@ func (c *Client) Listen() error {
 	}()
 
 	return nil
+}
+
+func (c *Client) listenerFailed(err error) {
+	// Without a receiver no outstanding transaction can finish successfully.
+	c.Close()
+	if c.onListenerError != nil {
+		c.onListenerError(err)
+	}
 }
 
 // Close closes this client.

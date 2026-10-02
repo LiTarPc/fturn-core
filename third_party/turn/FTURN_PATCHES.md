@@ -18,4 +18,8 @@ The original MIT license and source headers are retained.
   application's watcher recycles the allocation after repeated binding or
   allocation refresh failures, with independent success/failure counters.
 
-Regression tests: go test ./internal/client from this directory.
+- Add OnListenerError to report terminal receive-loop failures after canceling
+  pending transactions, so the application can reconnect without waiting for
+  another write or the smux keepalive timeout.
+
+Regression tests: go test ./... from this directory.
