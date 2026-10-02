@@ -83,8 +83,30 @@ func TestPermWatchIgnoresUnrelatedMessages(t *testing.T) {
 	log := f.NewLogger(turncScope)
 	log.Debug("Started refresh permission timer")
 	log.Debug("No permission to refresh")
-	log.Warnf("Failed to refresh allocation: %s", "x")
+	log.Warnf("Unrelated allocation warning: %s", "x")
 	if fired.Load() != 0 {
 		t.Fatalf("fired on unrelated message: %d", fired.Load())
+	}
+}
+
+func TestAllocationRefreshFailuresAreIndependent(t *testing.T) {
+	f, fired := newTestWatch(2)
+	log := f.NewLogger(turncScope)
+	log.Warnf("%s: %s", "Failed to refresh allocation", "437")
+	log.Debug(permOKMarker) // ChannelBind success cannot restore the allocation.
+	log.Warnf("Failed to refresh allocation: %s", "437")
+	if fired.Load() != 1 {
+		t.Fatalf("allocation failures did not recycle: %d", fired.Load())
+	}
+}
+
+func TestAllocationRefreshSuccessResetsFailures(t *testing.T) {
+	f, fired := newTestWatch(2)
+	log := f.NewLogger(turncScope)
+	log.Warn("Failed to refresh allocation: timeout")
+	log.Debugf("Updated lifetime: %d seconds", 600)
+	log.Warn("Failed to refresh allocation: timeout")
+	if fired.Load() != 0 {
+		t.Fatalf("successful refresh did not reset failures: %d", fired.Load())
 	}
 }

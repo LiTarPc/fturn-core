@@ -158,7 +158,7 @@ func dtlsSession(dtlsctx context.Context, dtlscancel context.CancelFunc, deps *D
 	}()
 	deps.log().Debugf("[STREAM %d] Established DTLS connection", streamID)
 
-	if err := clientsdb.WriteClientID(dtlsConn, params.ClientID, clientsdb.ModeUDP); err != nil {
+	if err := clientsdb.WriteClientStream(dtlsConn, params.ClientID, clientsdb.ModeUDP, streamID); err != nil {
 		return fmt.Errorf("failed to write client ID: %w", err)
 	}
 	if okchan != nil {

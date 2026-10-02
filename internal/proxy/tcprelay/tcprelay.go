@@ -445,7 +445,7 @@ func createSession(ctx context.Context, deps *Deps, params *Params, peer *net.UD
 	closers = append(closers, func() { _ = dtlsConn.Close() })
 
 	// Wire-контракт: Client ID первой app-record, до KCP.
-	if err = clientsdb.WriteClientID(dtlsConn, params.ClientID, clientsdb.ModeTCP); err != nil {
+	if err = clientsdb.WriteClientStream(dtlsConn, params.ClientID, clientsdb.ModeTCP, id); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("send client ID: %w", err)
 	}

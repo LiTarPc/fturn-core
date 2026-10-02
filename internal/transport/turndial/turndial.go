@@ -120,6 +120,8 @@ func Open(ctx context.Context, cfg Config, peer *net.UDPAddr, user, pass, rawAdd
 		Password:                  pass,
 		RequestedAddressFamily:    addrFamily,
 		PermissionRefreshInterval: 24 * time.Hour,
+		BindingRefreshInterval:    2 * time.Minute,
+		BindingCheckInterval:      10 * time.Second,
 		LoggerFactory:             loggerFactory,
 	})
 	if err != nil {
