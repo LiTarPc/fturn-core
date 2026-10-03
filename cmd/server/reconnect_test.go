@@ -26,8 +26,8 @@ func TestDTLSReconnectReplacesOnlyMatchingStream(t *testing.T) {
 	go func() {
 		buf := make([]byte, 1600)
 		for {
-			n, addr, err := backend.ReadFrom(buf)
-			if err != nil {
+			n, addr, readErr := backend.ReadFrom(buf)
+			if readErr != nil {
 				return
 			}
 			_, _ = backend.WriteTo(buf[:n], addr)
