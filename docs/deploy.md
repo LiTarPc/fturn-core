@@ -54,7 +54,7 @@ openssl rand -hex 32
    ```yaml
    services:
      free-turn-proxy:
-       image: ghcr.io/litarpc/fturn-core:4.2.0-rc.2
+       image: ghcr.io/litarpc/fturn-core:4.2.1
        container_name: free-turn-proxy
        network_mode: "host" # Важно для доступа к локальному VPN (127.0.0.1)
        restart: unless-stopped
@@ -75,7 +75,7 @@ openssl rand -hex 32
 1. Скачайте бинарник:
    ```bash
    sudo mkdir -p /opt/free-turn-proxy
-   sudo curl -L -o /opt/free-turn-proxy/server https://github.com/LiTarPc/fturn-core/releases/download/v4.2.0-rc.2/server-linux-amd64
+   sudo curl -L -o /opt/free-turn-proxy/server https://github.com/LiTarPc/fturn-core/releases/download/v4.2.1/server-linux-amd64
    sudo chmod +x /opt/free-turn-proxy/server
    ```
    Для другой архитектуры соберите сервер из исходников: `go build -o server ./cmd/server`.

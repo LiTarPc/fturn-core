@@ -42,17 +42,63 @@ func pipePair(dropEvery uint64) (*datagramConn, *datagramConn) {
 		&datagramConn{PacketConn: b, remote: a.LocalAddr()}
 }
 
-func TestRoundTrip(t *testing.T) {
+func TestServerSmuxProfiles(t *testing.T) {
 	t.Parallel()
-	runRoundTrip(t, 0)
+
+	client := SmuxConfig()
+	cases := []struct {
+		profile SmuxProfile
+		want    int
+	}{
+		{SmuxProfileLow, 8 * 1024},
+		{SmuxProfileMedium, 16 * 1024},
+		{SmuxProfileHigh, 32 * 1024},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.profile), func(t *testing.T) {
+			server := ServerSmuxConfig(tc.profile)
+			if server.MaxFrameSize != tc.want {
+				t.Fatalf("server MaxFrameSize=%d, want %d", server.MaxFrameSize, tc.want)
+			}
+			if server.MaxFrameSize > client.MaxFrameSize {
+				t.Fatalf("server MaxFrameSize=%d exceeds client default=%d", server.MaxFrameSize, client.MaxFrameSize)
+			}
+			if server.MaxReceiveBuffer != client.MaxReceiveBuffer || server.MaxStreamBuffer != client.MaxStreamBuffer {
+				t.Fatal("server smux config unexpectedly changed receive buffers")
+			}
+		})
+	}
+	if DefaultSmuxProfile() != SmuxProfileMedium {
+		t.Fatalf("default smux profile=%q, want medium", DefaultSmuxProfile())
+	}
+}
+
+func TestValidateSmuxProfile(t *testing.T) {
+	t.Parallel()
+	for _, profile := range []SmuxProfile{SmuxProfileLow, SmuxProfileMedium, SmuxProfileHigh} {
+		if err := ValidateSmuxProfile(profile); err != nil {
+			t.Fatalf("profile %q: %v", profile, err)
+		}
+	}
+	if err := ValidateSmuxProfile("turbo"); err == nil {
+		t.Fatal("expected invalid smux profile error")
+	}
+}
+
+func TestRoundTripAllServerSmuxProfiles(t *testing.T) {
+	for _, profile := range []SmuxProfile{SmuxProfileLow, SmuxProfileMedium, SmuxProfileHigh} {
+		t.Run(string(profile), func(t *testing.T) {
+			runRoundTrip(t, 0, profile)
+		})
+	}
 }
 
 func TestRoundTripWithLoss(t *testing.T) {
 	t.Parallel()
-	runRoundTrip(t, 7)
+	runRoundTrip(t, 7, SmuxProfileMedium)
 }
 
-func runRoundTrip(t *testing.T, dropEvery uint64) {
+func runRoundTrip(t *testing.T, dropEvery uint64, smuxProfile SmuxProfile) {
 	t.Helper()
 
 	clientConn, serverConn := pipePair(dropEvery)
@@ -66,7 +112,7 @@ func runRoundTrip(t *testing.T, dropEvery uint64) {
 			serverErr <- err
 			return
 		}
-		smuxSess, err := smux.Server(kcpSess, SmuxConfig())
+		smuxSess, err := smux.Server(kcpSess, ServerSmuxConfig(smuxProfile))
 		if err != nil {
 			serverErr <- err
 			return
@@ -80,6 +126,8 @@ func runRoundTrip(t *testing.T, dropEvery uint64) {
 	}
 	defer func() { _ = kcpClient.Close() }()
 
+	// Клиент остаётся на обычном конфиге (32 KiB frame), а сервер перебирает 8/16/32 KiB.
+	// Так тест проверяет wire-совместимость старого клиента со всеми серверными профилями.
 	smuxClient, err := smux.Client(kcpClient, SmuxConfig())
 	if err != nil {
 		t.Fatal(err)
@@ -126,8 +174,9 @@ func runRoundTrip(t *testing.T, dropEvery uint64) {
 		t.Fatal(err)
 	}
 
-	// обратное направление: сервер отвечает по тому же потоку
-	back := payload[:4096]
+	// Ответ больше 32 KiB, поэтому low/medium гарантированно фрагментируют его,
+	// а high использует стандартный 32 KiB quantum. Клиент должен собрать все варианты.
+	back := payload[:64*1024]
 	go func() { _, _ = srvStream.Write(back) }()
 	echo := make([]byte, len(back))
 	if err := stream.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil {

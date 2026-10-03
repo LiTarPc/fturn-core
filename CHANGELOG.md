@@ -1,5 +1,37 @@
 # Changelog
 
+## 4.2.1 (2026-10-03)
+
+* Promote the tested 4.2.0-rc.2 TURN renewal and reconnect fixes to a stable release after live messenger TURN verification.
+* Retain immediate dead-session removal and the first relay deallocation result.
+* Use Ftcore branding, publish version 4.2.1 in binaries and mobile artifacts, and update installation links.
+
+## 4.2.0-rc.2 (2026-10-02)
+
+* Retire TURN sessions immediately when their receiver stops, including remote TCP resets during idle periods.
+* Preserve the first relay deallocation result across DTLS and session cleanup; repeated close no longer falsely invalidates credentials.
+* Cancel pending STUN transactions when the listener exits and log connection age and transport failure reason.
+* Strengthen the TURN/TCP integration test to require stale session removal within two seconds without opening another stream.
+* Live logs confirm successful ChannelBind and allocation Refresh, but external TCP resets around five minutes remain under investigation. This candidate improves recovery and is not yet approved for stable promotion.
+
+## [4.2.0](https://github.com/LiTarPc/fturn-core/compare/v4.1.3...v4.2.0) (2026-10-02)
+
+### Bug Fixes
+
+* Refresh ChannelBind every two minutes, with idle checks every ten seconds, before the five-minute TURN permission expires.
+* Validate Refresh responses and errors, retry stale nonce, and recompute renewal timing from the server's returned lifetime.
+* Recycle allocations after repeated allocation or channel renewal failures, with independent failure counters.
+* Replace stale server sessions by client ID, mode and stable stream number when a relay reconnects.
+
+### Diagnostics and validation
+
+* Log Refresh/ChannelBind transaction timing, response types, error codes, lifetimes and renewal deadlines.
+* Add real DTLS reconnect coverage and TURN renewal regressions; run race tests and vet before publishing release assets.
+
+This version is initially published as a prerelease. Stable promotion and merging
+into main wait for the user's live мессенджер TURN validation. Update the server first,
+then the client, to enable replacement of individual streams.
+
 ## [3.1.1](https://github.com/LiTarPc/fturn-core/compare/v3.1.0...v3.1.1) (2026-08-19)
 
 

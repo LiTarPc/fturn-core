@@ -88,7 +88,7 @@ func TURNLoop(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr
 					deps.fatal(err)
 					return
 				}
-				if errors.Is(err, provider.ErrBackoffActive) {
+				if errors.Is(err, provider.ErrBackoffActive) || deps.Auth.BackoffUntilUnix() > time.Now().Unix() {
 					lockoutEnd := deps.Auth.BackoffUntilUnix()
 					var sleepDuration time.Duration
 					if lockoutEnd > 0 {
@@ -158,7 +158,7 @@ func dtlsSession(dtlsctx context.Context, dtlscancel context.CancelFunc, deps *D
 	}()
 	deps.log().Debugf("[STREAM %d] Established DTLS connection", streamID)
 
-	if err := clientsdb.WriteClientID(dtlsConn, params.ClientID, clientsdb.ModeUDP); err != nil {
+	if err := clientsdb.WriteClientStream(dtlsConn, params.ClientID, clientsdb.ModeUDP, streamID); err != nil {
 		return fmt.Errorf("failed to write client ID: %w", err)
 	}
 	if okchan != nil {
@@ -275,7 +275,7 @@ func oneTURN(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr,
 		select {
 		case <-turnctx.Done():
 		case <-stream.PermDead:
-			deps.log().Warnf("[STREAM %d] TURN channel-bind умер - рецикл allocation", streamID)
+			deps.log().Warnf("[STREAM %d] TURN receiver or renewal failed; recycling allocation", streamID)
 			turncancel()
 		}
 		// conn2 молчит, пока приложение не шлёт: без дедлайна его читатель досидел бы

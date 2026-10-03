@@ -176,5 +176,7 @@ jobs:
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: android-aar
-          path: dist/mobile.aar
+          path: |
+            dist/freeturn.aar
+            dist/freeturn-sources.jar
           retention-days: 7

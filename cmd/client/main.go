@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,6 +27,16 @@ var version = "dev"
 
 func main() {
 	args := os.Args[1:]
+	for _, arg := range args {
+		if arg == "-version" || arg == "--version" {
+			v := version
+			if v != "dev" && !strings.HasPrefix(v, "v") {
+				v = "v" + v
+			}
+			fmt.Println(v)
+			return
+		}
+	}
 
 	// Резолв подписки до парсинга даёт обязательный peer для валидации.
 	if subURL := config.PeekSubURL(args); subURL != "" {

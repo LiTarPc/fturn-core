@@ -19,6 +19,7 @@ import (
 	"github.com/LiTarPc/fturn-core/internal/proxy/tcpserver"
 	"github.com/LiTarPc/fturn-core/internal/proxy/udpserver"
 	"github.com/LiTarPc/fturn-core/internal/transport/dtlsdial"
+	"github.com/LiTarPc/fturn-core/internal/transport/kcpmux"
 	"github.com/LiTarPc/fturn-core/internal/wire"
 	"github.com/LiTarPc/fturn-core/internal/wire/rtpopus"
 	"github.com/pion/dtls/v3"
@@ -77,6 +78,9 @@ func main() {
 	}
 	logger.Infof("Starting server listen=%s connect=%s obf-profile=%s",
 		cfg.Proxy.Listen, cfg.Proxy.Connect, cfg.Obf.Profile)
+	if cfg.Proxy.Mode == config.ProxyModeTCP {
+		logger.Infof("TCP smux profile=%s frame=%d", cfg.Smux.Profile, kcpmux.SmuxFrameSize(cfg.Smux.Profile))
+	}
 	if !cfg.Obf.Enabled() {
 		logger.Warnf("running with -obf-profile=none: any client reaching %s can relay to %s (no shared-key auth)", cfg.Proxy.Listen, cfg.Proxy.Connect)
 	}
@@ -129,6 +133,7 @@ func main() {
 		logger.Infof("Client ID authorization enabled via %s", cfg.ClientsFile)
 	}
 
+	var sessions sessionRegistry
 	var wg sync.WaitGroup
 	var backoff time.Duration
 	for {
@@ -157,7 +162,7 @@ func main() {
 		}
 		backoff = 0
 		wg.Go(func() {
-			handleAccepted(ctx, logger, db, conn, cfg)
+			handleAccepted(ctx, logger, db, conn, cfg, &sessions)
 		})
 	}
 }
@@ -191,7 +196,7 @@ func modeName(b byte) string {
 	return string(config.ProxyModeUDP)
 }
 
-func handleAccepted(ctx context.Context, logger logx.Logger, db *clientsdb.DB, conn net.Conn, cfg *config.Server) {
+func handleAccepted(ctx context.Context, logger logx.Logger, db *clientsdb.DB, conn net.Conn, cfg *config.Server, sessions *sessionRegistry) {
 	defer func() {
 		if closeErr := conn.Close(); closeErr != nil {
 			logger.Warnf("failed to close incoming connection: %s", closeErr)
@@ -217,7 +222,7 @@ func handleAccepted(ctx context.Context, logger logx.Logger, db *clientsdb.DB, c
 	logger.Debugf("Handshake done")
 
 	// Wire-контракт: клиент всегда передаёт Client ID первой app-record.
-	clientID, clientMode, err := clientsdb.ReadClientID(dtlsConn)
+	clientID, clientMode, streamID, err := clientsdb.ReadClientHello(dtlsConn)
 	if err != nil {
 		logger.Warnf("Read Client ID failed: %v", err)
 		return
@@ -241,13 +246,22 @@ func handleAccepted(ctx context.Context, logger logx.Logger, db *clientsdb.DB, c
 		logger.Debugf("Client ID received (no allowlist): %s", clientID)
 	}
 
-	logger.Infof("Session up: client=%s from=%s", clientID, conn.RemoteAddr())
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	entry := &serverSession{cancel: cancel, conn: conn}
+	key := sessionKey{clientID: clientID, mode: wireMode(cfg.Proxy.Mode), streamID: streamID}
+	if old := sessions.replace(key, entry); old != nil {
+		logger.Infof("Session replaced: client=%s stream=%d mode=%s old=%s new=%s", clientID, streamID, cfg.Proxy.Mode, old.conn.RemoteAddr(), conn.RemoteAddr())
+	}
+	defer sessions.remove(key, entry)
+
+	logger.Infof("Session up: client=%s stream=%d from=%s", clientID, streamID, conn.RemoteAddr())
 	if cfg.Proxy.Mode == config.ProxyModeTCP {
-		tcpserver.Handle(ctx, logger, dtlsConn, cfg.Proxy.Connect, cfg.KCP.Profile)
+		tcpserver.Handle(ctx, logger, dtlsConn, cfg.Proxy.Connect, cfg.KCP.Profile, cfg.Smux.Profile)
 	} else {
 		udpserver.Handle(ctx, logger, conn, cfg.Proxy.Connect)
 	}
-	logger.Infof("Session down: client=%s from=%s", clientID, conn.RemoteAddr())
+	logger.Infof("Session down: client=%s stream=%d from=%s", clientID, streamID, conn.RemoteAddr())
 }
 
 func handleClientsCommand(args []string) {

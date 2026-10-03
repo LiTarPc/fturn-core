@@ -45,7 +45,8 @@ type Client struct {
 
 	store *Store
 
-	lockout atomic.Int64
+	lockout           atomic.Int64
+	networkPauseUntil atomic.Int64
 
 	personaMu sync.RWMutex
 	identity  browserprofile.Identity
@@ -205,9 +206,10 @@ func (c *Client) LockoutUntilUnix() int64 {
 	return c.lockout.Load()
 }
 
-// BackoffUntilUnix - алиас LockoutUntilUnix: lockout глобальный, а provider.Provider
-// требует no-arg сигнатуру (без streamID).
-func (c *Client) BackoffUntilUnix() int64 { return c.LockoutUntilUnix() }
+// BackoffUntilUnix возвращает ближайший общий запрет запросов к мессенджер.
+func (c *Client) BackoffUntilUnix() int64 {
+	return max(c.LockoutUntilUnix(), c.networkPauseUntil.Load())
+}
 
 func (*Client) Name() string { return "vk" }
 
@@ -242,6 +244,9 @@ func (c *Client) fetchSerialized(ctx context.Context, link string, streamID int)
 }
 
 func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, string, []string, error) {
+	if time.Now().Unix() < c.networkPauseUntil.Load() {
+		return "", "", nil, fmt.Errorf("VK network temporarily unavailable")
+	}
 	if time.Now().Unix() < c.lockout.Load() {
 		return "", "", nil, fmt.Errorf("%w: %w", ErrCaptchaWaitRequired, ErrLockoutActive)
 	}
@@ -250,6 +255,7 @@ func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, 
 
 	var lastErr error
 	burns := 0
+	outdatedRetried := make([]bool, len(c.credentials))
 	jar := personanet.NewCookieJar()
 	for i := 0; i < len(c.credentials); {
 		creds := c.credentials[i]
@@ -265,6 +271,20 @@ func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, 
 			return "", "", nil, err
 		}
 		c.log.Warnf("[STREAM %d] [Messenger Auth] Failed with client_id=%s: %v", streamID, creds.ClientID, err)
+		if isNetworkTimeout(err) {
+			c.networkPauseUntil.Store(time.Now().Add(30 * time.Second).Unix())
+			c.log.Warnf("[STREAM %d] [Messenger Auth] Network timeout; pausing VK requests for 30 seconds", streamID)
+			return "", "", nil, err
+		}
+		// The call token is short-lived. Restart the chain once to obtain a new
+		// one before trying another client_id. This is not a captcha failure.
+		if errors.Is(err, ErrAnonymTokenOutdated) && !outdatedRetried[i] {
+			outdatedRetried[i] = true
+			c.captchaAttempt = 0
+			jar = personanet.NewCookieJar()
+			c.log.Infof("[STREAM %d] [Messenger Auth] Call token expired; retrying with a fresh session", streamID)
+			continue
+		}
 
 		// Личность сменилась - тот же client_id проходится заново с чистыми
 		// куками, пока не кончатся режимы решения captcha.
@@ -272,6 +292,11 @@ func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, 
 			burns++
 			jar = personanet.NewCookieJar()
 			continue
+		}
+		if !errors.Is(err, ErrPersonaBurned) {
+			// An unrelated failure after a solved captcha must not force the next
+			// client_id straight into the manual captcha mode.
+			c.captchaAttempt = 0
 		}
 		i++
 
@@ -296,4 +321,12 @@ func vkDelayRandom(ctx context.Context, minMs, maxMs int) error {
 	case <-time.After(time.Duration(ms) * time.Millisecond):
 		return nil
 	}
+}
+
+func isNetworkTimeout(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	return (errors.As(err, &netErr) && netErr.Timeout()) || strings.Contains(err.Error(), "i/o timeout")
 }

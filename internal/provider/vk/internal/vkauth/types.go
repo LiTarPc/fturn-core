@@ -47,6 +47,7 @@ var (
 	ErrFatalCaptchaNoStreams = errors.Join(provider.ErrFatalNoStreams, errors.New("FATAL_CAPTCHA_FAILED_NO_STREAMS"))
 	ErrLockoutActive         = errors.New("global lockout active")
 	ErrPersonaBurned         = errors.New("persona burned")
+	ErrAnonymTokenOutdated   = errors.New("anonymous call token expired")
 	ErrInvalidJoinLink       = errors.Join(provider.ErrFatalNoStreams, errors.New("INVALID_JOIN_LINK"))
 	ErrAnonymousBlocked      = errors.Join(provider.ErrFatalNoStreams, errors.New("ANON_BLOCKED"))
 	ErrCallFull              = errors.Join(provider.ErrFatalNoStreams, errors.New("CALL_FULL"))

@@ -1,6 +1,7 @@
 package turndial
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 
@@ -8,9 +9,10 @@ import (
 )
 
 const (
-	permFailMarker = "Failed to bind channel"
-	permOKMarker   = "Channel binding successful"
-	turncScope     = "turnc"
+	permFailMarker         = "Failed to bind channel"
+	permSavedBind400Marker = "ChannelBind returned 400 for saved binding"
+	permOKMarker           = "Channel binding successful"
+	turncScope             = "turnc"
 	// permFailThreshold - число последовательных провалов ChannelBind refresh до срабатывания onDead.
 	permFailThreshold = 2
 )
@@ -32,18 +34,23 @@ func (f *permWatchFactory) NewLogger(scope string) logging.LeveledLogger {
 
 type permWatchLogger struct {
 	logging.LeveledLogger
-	f     *permWatchFactory
-	mu    sync.Mutex
-	fails int
-	fired bool
+	f          *permWatchFactory
+	mu         sync.Mutex
+	fails      int
+	allocFails int
+	fired      bool
 }
 
 func (l *permWatchLogger) note(msg string) {
 	switch {
-	case strings.Contains(msg, permFailMarker):
+	case strings.Contains(msg, permFailMarker), strings.Contains(msg, permSavedBind400Marker), strings.Contains(msg, "Failed to refresh allocation:"):
 		l.mu.Lock()
-		l.fails++
-		fire := !l.fired && l.fails >= l.f.threshold
+		if strings.Contains(msg, "Failed to refresh allocation:") {
+			l.allocFails++
+		} else {
+			l.fails++
+		}
+		fire := !l.fired && (l.fails >= l.f.threshold || l.allocFails >= l.f.threshold)
 		if fire {
 			l.fired = true
 		}
@@ -51,6 +58,10 @@ func (l *permWatchLogger) note(msg string) {
 		if fire && l.f.onDead != nil {
 			l.f.onDead()
 		}
+	case strings.Contains(msg, "Updated lifetime:"):
+		l.mu.Lock()
+		l.allocFails = 0
+		l.mu.Unlock()
 	case strings.Contains(msg, permOKMarker):
 		l.mu.Lock()
 		l.fails = 0
@@ -64,7 +75,7 @@ func (l *permWatchLogger) Warn(msg string) {
 }
 
 func (l *permWatchLogger) Warnf(format string, args ...any) {
-	l.note(format)
+	l.note(fmt.Sprintf(format, args...))
 	l.LeveledLogger.Warnf(format, args...)
 }
 
@@ -74,6 +85,6 @@ func (l *permWatchLogger) Debug(msg string) {
 }
 
 func (l *permWatchLogger) Debugf(format string, args ...any) {
-	l.note(format)
+	l.note(fmt.Sprintf(format, args...))
 	l.LeveledLogger.Debugf(format, args...)
 }

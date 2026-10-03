@@ -113,9 +113,12 @@ changelog:
       - 'Merge branch'
 
 release:
+  # Release candidates stay prereleases; final tags publish stable releases.
   prerelease: auto
   mode: replace
   draft: false
+  use_existing_draft: true
+  replace_existing_artifacts: true
   name_template: "Ftcore {{ .Version }}"
   extra_files:
     - glob: mobile-dist/freeturn.aar
@@ -128,6 +131,7 @@ dockers_v2:
     dockerfile: Dockerfile.goreleaser
     images:
       - "ghcr.io/{{ .Env.GITHUB_REPOSITORY | tolower }}"
+    # Publish latest only for stable tags.
     tags:
       - "{{ .Version }}"
       - '{{ if not .Prerelease }}latest{{ end }}'
