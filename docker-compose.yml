@@ -1,6 +1,6 @@
 services:
   free-turn-proxy:
-    image: ghcr.io/litarpc/fturn-core:4.2.0-rc.2
+    image: ghcr.io/litarpc/fturn-core:4.2.1
     # build: .
     network_mode: host
     restart: unless-stopped

@@ -11,7 +11,7 @@
 Интерактивный скрипт установит Docker или systemd, настроит файрвол и запустит сервер. Запускать от root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LiTarPc/fturn-core/master/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/LiTarPc/fturn-core/main/scripts/install.sh | sudo bash
 ```
 > Скопируйте параметры клиента, которые скрипт выдаст в конце. Для ручной установки или запуска скрипта без вопросов (non-interactive) см. [Развёртывание (deploy.md)](deploy.md).
 
@@ -30,7 +30,7 @@ sudo ./client -listen 127.0.0.1:9000 -peer <vps_ip>:56000 -link "<ссылка-�
 
 **Windows (от администратора):**
 ```
-Invoke-WebRequest -Uri https://github.com/LiTarPc/fturn-core/releases/download/v4.2.0-rc.2/client-windows-amd64.exe -OutFile client.exe
+Invoke-WebRequest -Uri https://github.com/LiTarPc/fturn-core/releases/download/v4.2.1/client-windows-amd64.exe -OutFile client.exe
 .\client.exe -peer <vps_ip>:56000  -link "<ссылка-на-звонок>" -listen 127.0.0.1:9000 -n 12 -streams-per-cred 12 -obf-profile rtpopus3 -obf-key <ВАШ_КЛЮЧ> -dns-servers 192.168.31.1 -dns-mode doh -client-id <ВАШ_CLIENT_ID> -routes
 ```
 
@@ -56,7 +56,7 @@ sudo ./client -listen 127.0.0.1:9000 -peer <vps_ip>:56000 -link "<ссылка-�
 
 ```bash
 termux-wake-lock
-# Скачивание: curl -L -o client https://github.com/LiTarPc/fturn-core/releases/download/v4.2.0-rc.2/client-android-arm64 && chmod +x client
+# Скачивание: curl -L -o client https://github.com/LiTarPc/fturn-core/releases/download/v4.2.1/client-android-arm64 && chmod +x client
 
 # Обязательно укажите ваш ключ и DNS оператора (можно узнать в настройках APN)
 ./client -listen 127.0.0.1:9000 -peer <vps_ip>:56000 -link "<ссылка-на-звонок>" -obf-profile rtpopus -obf-key <ВАШ_КЛЮЧ> -dns-servers <ip_dns_оператора> -client-id <ВАШ_CLIENT_ID>

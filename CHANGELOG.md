@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.2.1 (2026-10-03)
+
+* Promote the tested 4.2.0-rc.2 TURN renewal and reconnect fixes to a stable release after live messenger TURN verification.
+* Retain immediate dead-session removal and the first relay deallocation result.
+* Use Ftcore branding, publish version 4.2.1 in binaries and mobile artifacts, and update installation links.
+
 ## 4.2.0-rc.2 (2026-10-02)
 
 * Retire TURN sessions immediately when their receiver stops, including remote TCP resets during idle periods.
