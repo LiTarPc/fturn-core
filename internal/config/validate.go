@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/kcpmux"
-	"github.com/samosvalishe/free-turn-proxy/internal/tunnel"
+	"github.com/LiTarPc/fturn-core/internal/transport/kcpmux"
+	"github.com/LiTarPc/fturn-core/internal/tunnel"
 )
 
 // Validate проверяет валидность конфигурации Client.
@@ -21,7 +21,7 @@ func Validate(c *Client) error {
 	switch c.Provider.Name {
 	case ProviderVK:
 		if len(c.VK.Links) == 0 {
-			return errors.New("vk: need at least one link (-links / -link)")
+			return errors.New("messenger: need at least one link (-links / -link)")
 		}
 		if c.VK.StreamsPerCred <= 0 {
 			return errors.New("-streams-per-cred must be positive")

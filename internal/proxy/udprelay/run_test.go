@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/netconn"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider"
-	"github.com/samosvalishe/free-turn-proxy/internal/safego"
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/dtlsdial"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/netconn"
+	"github.com/LiTarPc/fturn-core/internal/provider"
+	"github.com/LiTarPc/fturn-core/internal/safego"
+	"github.com/LiTarPc/fturn-core/internal/transport/dtlsdial"
 )
 
 type stubAuth struct{}

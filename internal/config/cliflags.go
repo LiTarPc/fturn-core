@@ -6,9 +6,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/kcpmux"
-	"github.com/samosvalishe/free-turn-proxy/internal/uri"
-	"github.com/samosvalishe/free-turn-proxy/internal/wire/rtpopus"
+	"github.com/LiTarPc/fturn-core/internal/transport/kcpmux"
+	"github.com/LiTarPc/fturn-core/internal/uri"
+	"github.com/LiTarPc/fturn-core/internal/wire/rtpopus"
 )
 
 const uriScheme = "freeturn://"
@@ -41,9 +41,9 @@ func ParseClient(args []string, errOut io.Writer) (*Client, error) {
 	fs.StringVar(&r.Turn, "turn", r.Turn, "IP TURN-сервера; override creds провайдера")
 	fs.StringVar(&r.Port, "port", r.Port, "порт TURN-сервера; override creds провайдера")
 	fs.StringVar(&r.Listen, "listen", r.Listen, "локальный ip:port для WireGuard/Xray клиента")
-	fs.StringVar(&r.Provider, "provider", r.Provider, "источник TURN-creds: vk")
-	fs.StringVar(&r.Link, "link", r.Link, "(устарел) одна ссылка VK Calls, используйте -links")
-	fs.StringVar(&r.Links, "links", r.Links, "ссылки VK Calls через запятую: https://vk.ru/call/join/...,https://vk.ru/call/join/...")
+	fs.StringVar(&r.Provider, "provider", r.Provider, "источник TURN-реквизитов: мессенджер")
+	fs.StringVar(&r.Link, "link", r.Link, "(устарел) одна ссылка на звонок мессенджера; используйте -links")
+	fs.StringVar(&r.Links, "links", r.Links, "ссылки на звонки мессенджера через запятую")
 	fs.StringVar(&r.Peer, "peer", r.Peer, "адрес сервера на VPS, host:port; обязательно")
 	fs.IntVar(&r.N, "n", r.N, "число параллельных TURN-потоков")
 	fs.StringVar(&r.Transport, "transport", r.Transport, "транспорт до TURN-реле: tcp | udp")
@@ -52,10 +52,10 @@ func ParseClient(args []string, errOut io.Writer) (*Client, error) {
 	fs.StringVar(&r.ObfKey, "obf-key", r.ObfKey, "ключ для -obf-profile != none: 32 байта hex (64 символа)")
 	fs.BoolVar(&r.GenObfKey, "gen-obf-key", r.GenObfKey, "напечатать новый -obf-key и выйти")
 	fs.DurationVar(&r.ObfTiming, "obf-timing", r.ObfTiming, "межпакетная задержка для RTP-мимикрии (напр. 20ms); 0=выкл")
-	fs.IntVar(&r.StreamsPerCred, "streams-per-cred", r.StreamsPerCred, "TURN-потоков на один кеш VK-creds; только -provider vk")
+	fs.IntVar(&r.StreamsPerCred, "streams-per-cred", r.StreamsPerCred, "TURN-потоков на один кеш реквизитов мессенджера")
 	fs.BoolVar(&r.Debug, "debug", r.Debug, "подробные debug-логи")
-	fs.BoolVar(&r.ManualCaptcha, "manual-captcha", r.ManualCaptcha, "ручная VK captcha в браузере вместо авто; только -provider vk")
-	fs.StringVar(&r.Platform, "platform", r.Platform, "класс устройства персоны VK-auth: desktop | mobile; только -provider vk")
+	fs.BoolVar(&r.ManualCaptcha, "manual-captcha", r.ManualCaptcha, "ручная captcha мессенджера в браузере вместо автоматической")
+	fs.StringVar(&r.Platform, "platform", r.Platform, "класс устройства для авторизации: desktop | mobile")
 	fs.StringVar(&r.DNSMode, "dns-mode", r.DNSMode, "резолвер клиента: plain | doh | auto")
 	fs.StringVar(&r.DNSServers, "dns-servers", r.DNSServers, "свои UDP/53 DNS через запятую: ip[:port][,ip[:port]...]")
 	fs.StringVar(&r.ClientID, "client-id", r.ClientID, "уникальный ID клиента (автогенерация если не задан)")

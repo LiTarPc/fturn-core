@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/kcpmux"
+	"github.com/LiTarPc/fturn-core/internal/transport/kcpmux"
 )
 
 func TestParseServerSmuxProfileDefault(t *testing.T) {

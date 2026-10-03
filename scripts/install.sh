@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Free Turn Proxy — установщик сервера (gum UI, Material-палитра).
+# Ftcore — установщик сервера (gum UI, Material-палитра).
 #
 #   sudo bash install.sh              интерактивный мастер
 #   sudo bash install.sh -y [опции]   non-interactive (CI / автоматизация)
@@ -15,8 +15,8 @@ set -Eeuo pipefail
 # ───────────────────────────────────────────────────────────────────────────
 # Константы
 # ───────────────────────────────────────────────────────────────────────────
-readonly REPO="samosvalishe/free-turn-proxy"
-readonly IMAGE="ghcr.io/${REPO}"
+readonly REPO="LiTarPc/fturn-core"
+readonly IMAGE="ghcr.io/litarpc/fturn-core"
 readonly APP_DIR="/opt/free-turn-proxy"
 readonly CONF_FILE="${APP_DIR}/install.conf"
 readonly SERVICE="free-turn-proxy.service"
@@ -51,7 +51,7 @@ readonly C_RED='\033[0;31m' C_GREEN='\033[0;32m' C_YELLOW='\033[1;33m' C_CYAN='\
 # ───────────────────────────────────────────────────────────────────────────
 INSTALL_METHOD="docker"  # docker | systemd
 VERSION="latest"
-PROVIDER="vk"            # vk (источник TURN-creds на клиенте; сервер provider-agnostic)
+PROVIDER="vk"            # мессенджер (источник TURN-creds на клиенте; сервер provider-agnostic)
 PROXY_MODE="udp"         # udp | tcp
 BACKEND_PORT=""
 LISTEN_PORT="56000"
@@ -393,7 +393,7 @@ wizard_mode() {
 
 wizard_provider() {
     ui_menu PROVIDER "Провайдер TURN-creds (клиент):" "$PROVIDER" \
-        vk "VK Calls API"
+        vk "Мессенджер"
 }
 
 wizard_ports() {
@@ -410,7 +410,7 @@ wizard_ports() {
         ui_note "TCP-режим" "Backend — ваш Xray/sing-box inbound на 127.0.0.1. Сервис поднимаете отдельно; инсталлятор его не ставит."
     fi
     ask_port BACKEND_PORT "$label" "$def_backend"
-    ask_port LISTEN_PORT  "Внешний порт (приём Free Turn Proxy)" "${LISTEN_PORT:-56000}"
+    ask_port LISTEN_PORT  "Внешний порт (приём Ftcore)" "${LISTEN_PORT:-56000}"
 }
 
 wizard_wireguard() {
@@ -727,7 +727,7 @@ apply_systemd() {
     [ -n "$CLIENTS_FILE_CONF" ] && args="$args -clients-file ${CLIENTS_FILE_CONF}"
     cat > "$UNIT_FILE" <<EOF
 [Unit]
-Description=Free TURN Proxy Server
+Description=Ftcore Server
 After=network.target
 
 [Service]
@@ -838,7 +838,7 @@ do_uninstall() {  # REMOVE_DIR(0|1)
 }
 
 flow_uninstall() {
-    ui_yesno "Удалить Free Turn Proxy Server?" "N" || ui_abort
+    ui_yesno "Удалить Ftcore Server?" "N" || ui_abort
     local rm_dir=0
     ui_yesno "Удалить каталог ${APP_DIR} (ключи, clients.json, конфиг)?" "N" && rm_dir=1
     do_uninstall "$rm_dir"
@@ -877,7 +877,7 @@ run_noninteractive() {
 # ═══════════════════════════════════════════════════════════════════════════
 usage() {
     cat <<EOF
-Free Turn Proxy — установщик сервера.
+Ftcore — установщик сервера.
 
   sudo bash install.sh                 интерактивный мастер (gum)
   sudo bash install.sh -y [опции]      non-interactive
@@ -885,7 +885,7 @@ Free Turn Proxy — установщик сервера.
 Опции:
   -y, --yes, --non-interactive   без вопросов
   --method docker|systemd        метод (default docker)
-  --provider vk                  провайдер TURN-creds для клиента (default vk)
+  --provider <имя>               провайдер TURN-creds для клиента (мессенджер по умолчанию)
   --mode   udp|tcp               режим (default udp)
   --backend-port N               порт бэкенда (default udp→51820 / tcp→443)
   --listen-port N                внешний порт (default 56000)
@@ -919,7 +919,7 @@ parse_args() {
             --provider)
                 case "${2:-}" in
                     vk) OVERRIDES+=("PROVIDER=${2}") ;;
-                    *) die "--provider: vk" ;;
+                    *) die "неподдерживаемый провайдер" ;;
                 esac; shift ;;
             --mode)            OVERRIDES+=("PROXY_MODE=${2:-}"); shift ;;
             --backend-port)    OVERRIDES+=("BACKEND_PORT=${2:-}"); shift ;;

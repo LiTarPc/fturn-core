@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/LiTarPc/fturn-core/internal/clientsdb"
+	"github.com/LiTarPc/fturn-core/internal/config"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/transport/dtlsdial"
 	"github.com/pion/dtls/v3"
-	"github.com/samosvalishe/free-turn-proxy/internal/clientsdb"
-	"github.com/samosvalishe/free-turn-proxy/internal/config"
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/dtlsdial"
 )
 
 func TestDTLSReconnectReplacesOnlyMatchingStream(t *testing.T) {

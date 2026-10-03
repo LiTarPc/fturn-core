@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/provider"
+	"github.com/LiTarPc/fturn-core/internal/provider"
 )
 
 // Provider распределяет запросы учетных данных по пулу провайдеров.

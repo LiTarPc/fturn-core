@@ -10,14 +10,14 @@
 
 **Интерактивный режим** (задаст вопросы в терминале):
 ```bash
-curl -fsSL https://raw.githubusercontent.com/samosvalishe/free-turn-proxy/master/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/LiTarPc/fturn-core/master/scripts/install.sh | sudo bash
 ```
 > Скрипт идемпотентен: при повторном запуске он предложит обновить, переконфигурировать или удалить сервер.
 
 **Неинтерактивный режим** (для автоматизации):
 ```bash
 # Установка через Docker (UDP, порт бэкенда 51820)
-curl -fsSL https://raw.githubusercontent.com/samosvalishe/free-turn-proxy/master/scripts/install.sh | \
+curl -fsSL https://raw.githubusercontent.com/LiTarPc/fturn-core/master/scripts/install.sh | \
   sudo bash -s -- -y --method docker --mode udp --backend-port 51820
 
 # Обновление до конкретной версии
@@ -54,7 +54,7 @@ openssl rand -hex 32
    ```yaml
    services:
      free-turn-proxy:
-       image: ghcr.io/samosvalishe/free-turn-proxy:latest
+       image: ghcr.io/litarpc/fturn-core:4.2.0-rc.2
        container_name: free-turn-proxy
        network_mode: "host" # Важно для доступа к локальному VPN (127.0.0.1)
        restart: unless-stopped
@@ -75,15 +75,15 @@ openssl rand -hex 32
 1. Скачайте бинарник:
    ```bash
    sudo mkdir -p /opt/free-turn-proxy
-   sudo curl -L -o /opt/free-turn-proxy/server https://github.com/samosvalishe/free-turn-proxy/releases/latest/download/server-linux-amd64
+   sudo curl -L -o /opt/free-turn-proxy/server https://github.com/LiTarPc/fturn-core/releases/download/v4.2.0-rc.2/server-linux-amd64
    sudo chmod +x /opt/free-turn-proxy/server
    ```
-   *(Для ARM замените `-amd64` на `-arm64`)*
+   Для другой архитектуры соберите сервер из исходников: `go build -o server ./cmd/server`.
 2. Создайте службу: `sudo nano /etc/systemd/system/free-turn-proxy.service`
 3. Вставьте конфигурацию:
    ```ini
    [Unit]
-   Description=Free TURN Proxy Server
+   Description=Ftcore Server
    After=network.target
 
    [Service]
@@ -111,7 +111,8 @@ openssl rand -hex 32
    ```yaml
    services:
      awg:
-       image: ghcr.io/samosvalishe/freeturn-awg:latest
+       image: freeturn-awg:local
+       # Соберите локально из каталога репозитория: docker build -t freeturn-awg:local docker/awg
        container_name: freeturn-awg
        network_mode: "host"
        cap_add:

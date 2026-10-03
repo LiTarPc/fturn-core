@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/kcpmux"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/transport/kcpmux"
 	"github.com/xtaci/smux"
 )
 

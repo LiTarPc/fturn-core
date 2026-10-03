@@ -50,7 +50,7 @@ tasks:
         -target android/arm64,android/arm
         -androidapi 24
         -javapkg com.freeturn.core
-        -ldflags "-checklinkname=0 -s -w -X github.com/samosvalishe/free-turn-proxy/mobile.version={{.VERSION}}"
+        -ldflags "-checklinkname=0 -s -w -X github.com/LiTarPc/fturn-core/mobile.version={{.VERSION}}"
     cmds:
       - rm -rf dist/freeturn.aar dist/freeturn-sources.jar
       - mkdir -p dist
@@ -110,7 +110,7 @@ tasks:
       - govulncheck ./...
 
   captcha:page:
-    desc: Fetch a live VK captcha page (diff it against the parser fixture)
+    desc: Fetch a live messenger captcha page (diff it against the parser fixture)
     cmds:
       - bash scripts/captcha_page.sh {{.CLI_ARGS | default "captcha_page.html"}}
 

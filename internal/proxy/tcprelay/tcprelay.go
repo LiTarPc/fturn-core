@@ -9,20 +9,20 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/client/ish"
-	"github.com/samosvalishe/free-turn-proxy/internal/clientsdb"
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/netconn"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider"
-	"github.com/samosvalishe/free-turn-proxy/internal/proxy/allocpace"
-	"github.com/samosvalishe/free-turn-proxy/internal/proxy/udprelay"
-	"github.com/samosvalishe/free-turn-proxy/internal/randx"
-	"github.com/samosvalishe/free-turn-proxy/internal/safego"
-	"github.com/samosvalishe/free-turn-proxy/internal/stats"
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/dtlsdial"
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/kcpmux"
-	"github.com/samosvalishe/free-turn-proxy/internal/wire"
-	"github.com/samosvalishe/free-turn-proxy/internal/wire/shape"
+	"github.com/LiTarPc/fturn-core/internal/client/ish"
+	"github.com/LiTarPc/fturn-core/internal/clientsdb"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/netconn"
+	"github.com/LiTarPc/fturn-core/internal/provider"
+	"github.com/LiTarPc/fturn-core/internal/proxy/allocpace"
+	"github.com/LiTarPc/fturn-core/internal/proxy/udprelay"
+	"github.com/LiTarPc/fturn-core/internal/randx"
+	"github.com/LiTarPc/fturn-core/internal/safego"
+	"github.com/LiTarPc/fturn-core/internal/stats"
+	"github.com/LiTarPc/fturn-core/internal/transport/dtlsdial"
+	"github.com/LiTarPc/fturn-core/internal/transport/kcpmux"
+	"github.com/LiTarPc/fturn-core/internal/wire"
+	"github.com/LiTarPc/fturn-core/internal/wire/shape"
 	"github.com/xtaci/smux"
 )
 
@@ -414,7 +414,7 @@ func createSession(ctx context.Context, deps *Deps, params *Params, peer *net.UD
 	}
 	relayedAddr := stream.Relay.LocalAddr().String()
 	closers = append(closers, func() {
-		// Недошедший deallocate держит квоту VK до конца её lifetime, и следующий
+		// Недошедший deallocate держит квоту мессенджер до конца её lifetime, и следующий
 		// Allocate по тем же кредам ловит 486 - такие креды переиспользовать нельзя.
 		cerr := stream.Close()
 		log.Infof("[session %d] TURN allocation released: relayed=%s deallocate=%v", id, relayedAddr, cerr)

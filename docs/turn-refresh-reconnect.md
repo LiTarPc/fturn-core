@@ -18,7 +18,7 @@ must reconnect them. Replacing a session does not migrate TCP byte streams.
 
 Pion TURN previously refreshed ChannelBind after five minutes and checked every
 30 seconds. Permission expires after five minutes, even though a channel lives
-for ten minutes. With periodic CreatePermission refresh disabled for the VK
+for ten minutes. With periodic CreatePermission refresh disabled for the мессенджер
 workaround, the old timing allowed permission to expire before ChannelBind.
 ChannelBind now refreshes after two minutes, checked every ten seconds even when
 traffic is idle. This leaves about 170 seconds before permission expiry for
@@ -32,7 +32,7 @@ allocation refreshes retry after at most five seconds. Two consecutive failures
 of either allocation renewal or channel renewal signal allocation recycling;
 the counters reset independently only on the corresponding successful reply.
 
-## Debugging a live VK relay
+## Debugging a live мессенджер relay
 
 Run the client with `-debug`. Successful and failed Refresh/ChannelBind requests
 log transaction ID, stream, server/peer, channel, elapsed time, response type,
@@ -51,7 +51,7 @@ the replacement without waiting for the old server handler's idle timeout.
 The automated tests cover Refresh errors (400/403/437), stale nonce retry, invalid
 responses, changed lifetimes and timer intervals, channel renewal during idle,
 hello compatibility, and real DTLS reconnection with UDP backend traffic. The
-existing TURN/TCP integration test covers relay transport recovery. Live VK
+existing TURN/TCP integration test covers relay transport recovery. Live мессенджер
 provider behavior still requires the runtime check above.
 
 ## Live validation follow-up (4.2.0-rc.2)
@@ -60,7 +60,7 @@ The October 2 live capture shows all 20 allocation Refresh requests returning
 success with LIFETIME=600. ChannelBind also succeeds around 2:10 and 4:20, leaving
 permissions valid until roughly 9:20. Some TURN TCP sockets nevertheless receive
 RST immediately after the five-minute allocation refresh; others time out.
-This does not establish whether VK, an intermediary, or a network policy causes
+This does not establish whether мессенджер, an intermediary, or a network policy causes
 the reset, or whether it is triggered by Refresh versus connection age.
 
 Previously the TURN listener simply exited on such a read error. The session

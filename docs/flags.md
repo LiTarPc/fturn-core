@@ -6,9 +6,9 @@
 | --- | --- | --- |
 | `-listen` | `127.0.0.1:9000` | локальный адрес `ip:port`, куда подключается WireGuard (UDP) или Xray/sing-box (TCP) клиент |
 | `-peer` | **обязательный** | адрес сервера на VPS, `host:port` |
-| `-provider` | `vk` | источник TURN-creds: `vk` (см. `docs/providers.md`) |
-| `-link` | пусто | (устарел) одна ссылка VK Calls `https://vk.ru/call/join/...`; используйте `-links`. Игнорируется, если задан `-links` |
-| `-links` | **обязательный для `-provider vk`** (или `-link`) | ссылки VK Calls через запятую `https://vk.ru/call/join/A,https://vk.ru/call/join/B`; каждая даёт свой пул из `-n` стримов |
+| `-provider` | по умолчанию | встроенный провайдер мессенджера; выбирать явно не требуется |
+| `-link` | пусто | (устарел) одна ссылка на звонок мессенджераа `<ссылка-на-звонок>`; используйте `-links`. Игнорируется, если задан `-links` |
+| `-links` | **обязательный** (или `-link`) | ссылки на звонки мессенджера через запятую `<ссылка-на-звонок>`; каждая даёт свой пул из `-n` стримов |
 | `-n` | `10` | параллельных TURN-потоков; в `-mode tcp` это число сессий пула, по которым round-robin раскладываются локальные TCP-соединения |
 | `-transport` | `tcp` | транспорт до TURN-реле: `tcp` (TCP/TLS) \| `udp` |
 | `-mode` | `udp` | режим туннеля: `udp` (UDP-релей для WireGuard) \| `tcp` (TCP-форвардер для Xray/sing-box) |
@@ -18,9 +18,9 @@
 | `-obf-key` | пусто | общий ключ для `-obf-profile != none`, 32 байта hex (64 символа) |
 | `-obf-timing` | `0` | межпакетная задержка для RTP-мимикрии (напр. `20ms`); только с `-obf-profile != none`; `0` = выкл. В `-mode tcp` особенно уместна: KCP гонит бёрсты полноразмерных пакетов, без выравнивания профиль на Opus не похож |
 | `-gen-obf-key` | `false` | напечатать новый ключ и выйти |
-| `-manual-captcha` | `false` | сразу ручной режим captcha (только `-provider vk`) |
-| `-streams-per-cred` | `10` | потоков на один кеш VK-учёток (только `-provider vk`) |
-| `-platform` | `desktop` | класс устройства персоны VK-auth (мобильность UA/device/client hints): `desktop` \| `mobile` (только `-provider vk`) |
+| `-manual-captcha` | `false` | сразу ручной режим captcha |
+| `-streams-per-cred` | `10` | потоков на один кеш учёток мессенджера |
+| `-platform` | `desktop` | класс устройства персоны авторизации мессенджера (мобильность UA/device/client hints): `desktop` \| `mobile` |
 | `-dns-mode` | `auto` | `plain` (UDP/53) \| `doh` \| `auto` |
 | `-dns-servers` | пусто | свои UDP/53 резолверы, `ip[:port][,ip[:port]...]` |
 | `-client-id` | авто | уникальный ID клиента (автогенерация если не задан) |

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/kcpmux"
-	"github.com/samosvalishe/free-turn-proxy/internal/uri"
+	"github.com/LiTarPc/fturn-core/internal/transport/kcpmux"
+	"github.com/LiTarPc/fturn-core/internal/uri"
 )
 
 const minimalJSON = `{"peer":"1.2.3.4:5000","vk":{"links":["https://vk.ru/call/join/CODE"]}}`

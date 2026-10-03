@@ -13,14 +13,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/LiTarPc/fturn-core/internal/clientsdb"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/proxy/tcpserver"
+	"github.com/LiTarPc/fturn-core/internal/transport/dtlsdial"
+	"github.com/LiTarPc/fturn-core/internal/transport/kcpmux"
+	"github.com/LiTarPc/fturn-core/internal/wire"
 	"github.com/pion/dtls/v3"
 	"github.com/pion/turn/v5"
-	"github.com/samosvalishe/free-turn-proxy/internal/clientsdb"
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/proxy/tcpserver"
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/dtlsdial"
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/kcpmux"
-	"github.com/samosvalishe/free-turn-proxy/internal/wire"
 )
 
 const integrationWait = 45 * time.Second

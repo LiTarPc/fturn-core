@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/LiTarPc/fturn-core/internal/netconn"
+	"github.com/LiTarPc/fturn-core/internal/tunnel"
 	"github.com/amnezia-vpn/amneziawg-go/conn"
-	"github.com/samosvalishe/free-turn-proxy/internal/netconn"
-	"github.com/samosvalishe/free-turn-proxy/internal/tunnel"
 )
 
 // Bind обязан удовлетворять интерфейсу устройства.

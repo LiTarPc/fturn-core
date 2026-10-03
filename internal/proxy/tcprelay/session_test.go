@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider"
-	"github.com/samosvalishe/free-turn-proxy/internal/proxy/allocpace"
-	"github.com/samosvalishe/free-turn-proxy/internal/stats"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/provider"
+	"github.com/LiTarPc/fturn-core/internal/proxy/allocpace"
+	"github.com/LiTarPc/fturn-core/internal/stats"
 )
 
 type fakeAuth struct {
