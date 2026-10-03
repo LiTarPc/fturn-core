@@ -9,9 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/stats"
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/dtlsdial"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/stats"
+	"github.com/LiTarPc/fturn-core/internal/transport/dtlsdial"
 )
 
 // AuthHandler определяет интерфейс взаимодействия с провайдером при ошибках авторизации.

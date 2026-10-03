@@ -19,11 +19,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/client/ish"
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/browserprofile"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/captcha"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/personanet"
+	"github.com/LiTarPc/fturn-core/internal/client/ish"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/browserprofile"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/captcha"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/personanet"
 )
 
 // Debug включает логирование проксируемого браузерного трафика.
@@ -70,7 +70,7 @@ func localCaptchaHosts() []string {
 }
 
 // blockedProxyHosts - реклама и внешняя телеметрия. Всё, что не в allowed, и так
-// не проксируется; список нужен для хостов под доменами VK, которые иначе прошли
+// не проксируется; список нужен для хостов под доменами мессенджер, которые иначе прошли
 // бы по суффиксу. Captcha без них решается: adFp тогда пустой, ровно как у
 // браузера с блокировщиком.
 var blockedProxyHosts = []string{
@@ -472,7 +472,7 @@ func navSummary(req *http.Request) string {
 		req.Header.Get("Referer"))
 }
 
-// SolveViaProxy проксирует VK redirect_uri через локальный HTTP-сервер,
+// SolveViaProxy проксирует мессенджер redirect_uri через локальный HTTP-сервер,
 // переписывая абсолютные URL так, чтобы браузер всё время оставался на
 // 127.0.0.1:8765; возвращает результирующий auth-токен.
 func SolveViaProxy(ctx context.Context, redirectURI string, dialer net.Dialer, profile browserprofile.Profile) (string, error) {

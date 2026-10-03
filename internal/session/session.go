@@ -10,16 +10,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/client/dnsdial"
-	"github.com/samosvalishe/free-turn-proxy/internal/config"
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk"
-	"github.com/samosvalishe/free-turn-proxy/internal/proxy/udprelay"
-	"github.com/samosvalishe/free-turn-proxy/internal/routemgr"
-	"github.com/samosvalishe/free-turn-proxy/internal/stats"
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/dtlsdial"
-	"github.com/samosvalishe/free-turn-proxy/internal/wake"
+	"github.com/LiTarPc/fturn-core/internal/client/dnsdial"
+	"github.com/LiTarPc/fturn-core/internal/config"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/provider"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk"
+	"github.com/LiTarPc/fturn-core/internal/proxy/udprelay"
+	"github.com/LiTarPc/fturn-core/internal/routemgr"
+	"github.com/LiTarPc/fturn-core/internal/stats"
+	"github.com/LiTarPc/fturn-core/internal/transport/dtlsdial"
+	"github.com/LiTarPc/fturn-core/internal/wake"
 )
 
 // Phase - текущая стадия подключения сессии.
@@ -241,7 +241,7 @@ func (s *Session) runRelayLoop(ctx context.Context, prov provider.Provider, peer
 }
 
 // Wake сообщает о подозрении на сон или смену сети. Рецикл не мгновенный: сначала
-// watchWake проверяет, молчит ли канал - пересоздание живых аллокаций стоит похода в VK
+// watchWake проверяет, молчит ли канал - пересоздание живых аллокаций стоит похода в мессенджер
 // за реквизитами и решения капчи.
 func (s *Session) Wake() {
 	select {

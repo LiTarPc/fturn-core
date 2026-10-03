@@ -13,14 +13,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/LiTarPc/fturn-core/internal/clientsdb"
+	"github.com/LiTarPc/fturn-core/internal/config"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/proxy/udpserver"
+	"github.com/LiTarPc/fturn-core/internal/transport/dtlsdial"
+	"github.com/LiTarPc/fturn-core/internal/wire"
+	"github.com/LiTarPc/fturn-core/internal/wire/rtpopus"
 	"github.com/pion/dtls/v3"
-	"github.com/samosvalishe/free-turn-proxy/internal/clientsdb"
-	"github.com/samosvalishe/free-turn-proxy/internal/config"
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/proxy/udpserver"
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/dtlsdial"
-	"github.com/samosvalishe/free-turn-proxy/internal/wire"
-	"github.com/samosvalishe/free-turn-proxy/internal/wire/rtpopus"
 )
 
 // version is populated at build time via -ldflags "-X main.version=...".
@@ -40,7 +40,7 @@ func main() {
 		log.Fatalf("%v", err)
 	}
 	logger := logx.New(cfg.Log.Debug)
-	logger.Infof("Free Turn Proxy server version=%s", version)
+	logger.Infof("Ftcore server version=%s", version)
 
 	if cfg.Obf.GenKey {
 		key, gerr := rtpopus.GenKeyHex()

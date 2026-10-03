@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/netconn"
+	"github.com/LiTarPc/fturn-core/internal/netctl"
+	"github.com/LiTarPc/fturn-core/internal/randx"
 	"github.com/pion/turn/v5"
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/netconn"
-	"github.com/samosvalishe/free-turn-proxy/internal/netctl"
-	"github.com/samosvalishe/free-turn-proxy/internal/randx"
 )
 
 // Config задаёт параметры подключения к TURN-серверу.
@@ -103,7 +103,7 @@ func Open(ctx context.Context, cfg Config, peer *net.UDPAddr, user, pass, rawAdd
 		addrFamily = turn.RequestedAddressFamilyIPv6
 	}
 
-	// VK отбрасывает CreatePermission refresh с кодом 400; канал поддерживается через ChannelBind.
+	// мессенджер отбрасывает CreatePermission refresh с кодом 400; канал поддерживается через ChannelBind.
 	permDead := make(chan struct{})
 	var permOnce sync.Once
 	loggerFactory := &permWatchFactory{

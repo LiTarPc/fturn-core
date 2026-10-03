@@ -1,6 +1,6 @@
 package config
 
-import "github.com/samosvalishe/free-turn-proxy/internal/tunnel"
+import "github.com/LiTarPc/fturn-core/internal/tunnel"
 
 const (
 	TransportTCP = "tcp"

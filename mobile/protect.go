@@ -3,11 +3,11 @@ package mobile
 import (
 	"syscall"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/netctl"
+	"github.com/LiTarPc/fturn-core/internal/netctl"
 )
 
 // Protector реализуется хостом для исключения сокетов клиента из VPN-туннеля (VpnService.protect).
-// Без этого TURN / VK API / DNS трафик заворачивается обратно в туннель.
+// Без этого TURN / мессенджер API / DNS трафик заворачивается обратно в туннель.
 type Protector interface {
 	Protect(fd int) bool
 }

@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/config"
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/netconn"
-	"github.com/samosvalishe/free-turn-proxy/internal/tunnel"
-	"github.com/samosvalishe/free-turn-proxy/internal/tunnel/awg"
-	"github.com/samosvalishe/free-turn-proxy/internal/tunnel/bind"
-	"github.com/samosvalishe/free-turn-proxy/internal/tunnel/wgconf"
+	"github.com/LiTarPc/fturn-core/internal/config"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/netconn"
+	"github.com/LiTarPc/fturn-core/internal/tunnel"
+	"github.com/LiTarPc/fturn-core/internal/tunnel/awg"
+	"github.com/LiTarPc/fturn-core/internal/tunnel/bind"
+	"github.com/LiTarPc/fturn-core/internal/tunnel/wgconf"
 )
 
 // TunnelSnapshot - срез состояния userspace-туннеля.

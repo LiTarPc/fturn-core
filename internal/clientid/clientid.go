@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/statedir"
+	"github.com/LiTarPc/fturn-core/internal/statedir"
 )
 
 const fileName = "client_config.json"

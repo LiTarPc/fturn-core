@@ -6,7 +6,7 @@ import (
 	_ "embed"
 	"strings"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/randx"
+	"github.com/LiTarPc/fturn-core/internal/randx"
 )
 
 //go:embed data/first_names_male.txt

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/config"
-	"github.com/samosvalishe/free-turn-proxy/internal/netconn"
+	"github.com/LiTarPc/fturn-core/internal/config"
+	"github.com/LiTarPc/fturn-core/internal/netconn"
 )
 
 func newTestSession(t *testing.T, opts Options, captcha func() bool) *Session {

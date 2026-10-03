@@ -62,7 +62,7 @@
     function showPending() {
         document.body.style.background = '#000';
         const banner = document.createElement('div');
-        banner.textContent = 'free turn proxy - captcha';
+        banner.textContent = 'Ftcore - captcha';
         banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;padding:12px;text-align:center;font:13.5px ui-monospace,monospace;color:#e1e1e1;background:#000';
         document.body.append(banner);
     }
@@ -71,7 +71,7 @@
         document.body.style.background = '#000';
         document.body.innerHTML =
             '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:ui-monospace,monospace;text-align:center">' +
-            '<div style="font-size:16.5px;font-weight:700;color:#e1e1e1">free turn proxy</div>' +
+            '<div style="font-size:16.5px;font-weight:700;color:#e1e1e1">Ftcore</div>' +
             '<div style="font-size:13.5px;color:#818181">gg</div></div>';
         setTimeout(() => window.close(), 1000);
     }

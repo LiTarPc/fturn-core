@@ -11,13 +11,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/config"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk"
-	"github.com/samosvalishe/free-turn-proxy/internal/session"
-	"github.com/samosvalishe/free-turn-proxy/internal/statedir"
-	"github.com/samosvalishe/free-turn-proxy/internal/sub"
-	"github.com/samosvalishe/free-turn-proxy/internal/tunnel"
-	"github.com/samosvalishe/free-turn-proxy/internal/tunnel/awg"
+	"github.com/LiTarPc/fturn-core/internal/config"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk"
+	"github.com/LiTarPc/fturn-core/internal/session"
+	"github.com/LiTarPc/fturn-core/internal/statedir"
+	"github.com/LiTarPc/fturn-core/internal/sub"
+	"github.com/LiTarPc/fturn-core/internal/tunnel"
+	"github.com/LiTarPc/fturn-core/internal/tunnel/awg"
 )
 
 // Состояния подключения (session.Phase*).

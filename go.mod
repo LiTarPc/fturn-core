@@ -1,4 +1,4 @@
-module github.com/samosvalishe/free-turn-proxy
+module github.com/LiTarPc/fturn-core
 
 go 1.26.6
 

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/session"
+	"github.com/LiTarPc/fturn-core/internal/session"
 )
 
 const testConfig = `{"peer":"1.2.3.4:5000","clientId":"deadbeef","vk":{"links":["https://vk.ru/call/join/CODE"]}}`

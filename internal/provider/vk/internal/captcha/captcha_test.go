@@ -158,7 +158,7 @@ func TestPickSliderAttempts(t *testing.T) {
 	}
 }
 
-// VK раздаёт страницу то с id.vk.ru, то с api.vk.ru: Origin от одного хоста при
+// мессенджер раздаёт страницу то с id.vk.ru, то с api.vk.ru: Origin от одного хоста при
 // странице на другом браузер выдать не может.
 func TestAPIRequestHeadersFollowPageOrigin(t *testing.T) {
 	const pageQuery = "/not_robot_captcha?domain=vk.com&session_token=x&variant=popup"

@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/session"
+	"github.com/LiTarPc/fturn-core/internal/session"
 )
 
 const (

@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/browserprofile"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/browserprofile"
 )
 
 // PoW-скрипт страницы обфусцирован, имена переменных генерируются заново на каждый

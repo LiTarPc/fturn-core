@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/LiTarPc/fturn-core/internal/netctl"
 	"github.com/pion/transport/v4"
-	"github.com/samosvalishe/free-turn-proxy/internal/netctl"
 )
 
 type DirectNet struct{}

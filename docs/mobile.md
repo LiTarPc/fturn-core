@@ -13,10 +13,10 @@
 
 ```bash
 termux-wake-lock
-curl -L -o client https://github.com/samosvalishe/free-turn-proxy/releases/latest/download/client-android-arm64
+curl -L -o client https://github.com/LiTarPc/fturn-core/releases/download/v4.2.0-rc.2/client-android-arm64
 chmod +x client
 # Замените <ip_dns_оператора> на DNS вашего провайдера
-./client -listen 127.0.0.1:9000 -peer <vps>:56000 -link "<vk-link>" -dns-servers <ip_dns_оператора>
+./client -listen 127.0.0.1:9000 -peer <vps>:56000 -link "<ссылка-на-звонок>" -dns-servers <ip_dns_оператора>
 ```
 
 Снять wake lock: `termux-wake-unlock`.
@@ -28,9 +28,9 @@ chmod +x client
 ```bash
 apk update
 apk add curl
-curl -L -o client https://github.com/samosvalishe/free-turn-proxy/releases/latest/download/client-linux-386
+go build -o client ./cmd/client
 chmod +x client
-GOMAXPROCS=1 GODEBUG=asyncpreemptoff=1 ./client -listen 127.0.0.1:9000 -peer <vps>:56000 -link "<vk-link>"
+GOMAXPROCS=1 GODEBUG=asyncpreemptoff=1 ./client -listen 127.0.0.1:9000 -peer <vps>:56000 -link "<ссылка-на-звонок>"
 ```
 
 Дольше в фоне:

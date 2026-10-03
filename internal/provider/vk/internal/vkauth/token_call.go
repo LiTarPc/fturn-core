@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/browserprofile"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/captcha"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/browserprofile"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/captcha"
 
 	tlsclient "github.com/bogdanfinn/tls-client"
 )
@@ -43,10 +43,10 @@ func (c *Client) fetchCallToken(
 				continue
 			}
 			if termErr := classifyLinkError(errObj); termErr != nil {
-				c.log.Errorf("[STREAM %d] [VK Auth] terminal link error: %v", streamID, termErr)
+				c.log.Errorf("[STREAM %d] [Messenger Auth] terminal link error: %v", streamID, termErr)
 				return "", termErr
 			}
-			return "", fmt.Errorf("VK API error: %v", errObj)
+			return "", fmt.Errorf("messenger API error: %v", errObj)
 		}
 
 		respMap, ok := resp["response"].(map[string]any)

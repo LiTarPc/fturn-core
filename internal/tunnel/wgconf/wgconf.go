@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/tunnel"
+	"github.com/LiTarPc/fturn-core/internal/tunnel"
 )
 
 // ignoredKeys содержит ключи wg-quick, управляемые внешней платформой/ОС.

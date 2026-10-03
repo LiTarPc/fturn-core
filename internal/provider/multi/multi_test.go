@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/provider"
+	"github.com/LiTarPc/fturn-core/internal/provider"
 )
 
 // fakeProvider записывает streamID, с которыми его звали, и кодирует свой индекс

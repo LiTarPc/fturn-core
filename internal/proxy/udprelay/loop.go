@@ -9,12 +9,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/LiTarPc/fturn-core/internal/clientsdb"
+	"github.com/LiTarPc/fturn-core/internal/provider"
+	"github.com/LiTarPc/fturn-core/internal/randx"
+	"github.com/LiTarPc/fturn-core/internal/wire"
+	"github.com/LiTarPc/fturn-core/internal/wire/shape"
 	"github.com/cbeuw/connutil"
-	"github.com/samosvalishe/free-turn-proxy/internal/clientsdb"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider"
-	"github.com/samosvalishe/free-turn-proxy/internal/randx"
-	"github.com/samosvalishe/free-turn-proxy/internal/wire"
-	"github.com/samosvalishe/free-turn-proxy/internal/wire/shape"
 )
 
 // errPairRecycled - пару свернул TURN-цикл (аллокация мертва), а не сеть: сетевой
@@ -247,7 +247,7 @@ func oneTURN(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr,
 
 	defer func() {
 		deps.ConnectedStreams.Add(-1)
-		// Освобождение аллокации логируем всегда: недошедший deallocate держит квоту VK
+		// Освобождение аллокации логируем всегда: недошедший deallocate держит квоту мессенджер
 		// до конца её lifetime, и следующий Allocate ловит 486.
 		cerr := stream.Close()
 		deps.log().Infof("[STREAM %d] TURN allocation released: relayed=%s deallocate=%v",

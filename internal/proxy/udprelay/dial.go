@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/turndial"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/transport/turndial"
 )
 
 // GetCredsFunc разрешает TURN-реквизиты для streamID.
