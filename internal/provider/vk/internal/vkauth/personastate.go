@@ -4,14 +4,14 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/statedir"
+	"github.com/LiTarPc/fturn-core/internal/statedir"
 )
 
 // PersonaStateFile - имя файла с поколением персоны рядом с client_config.json.
 const PersonaStateFile = "vk_persona.json"
 
 // personaState переживает перезапуск: без него сожжённый отпечаток воскресает на
-// старте и VK каждый раз видит тот, что уже отверг. Seed фиксирует, чьё это
+// старте и мессенджер каждый раз видит тот, что уже отверг. Seed фиксирует, чьё это
 // поколение - смена -client-id даёт новую личность и счётчик с нуля.
 type personaState struct {
 	Seed string `json:"seed"`

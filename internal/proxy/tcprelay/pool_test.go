@@ -4,8 +4,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/netconn"
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/kcpmux"
+	"github.com/LiTarPc/fturn-core/internal/netconn"
+	"github.com/LiTarPc/fturn-core/internal/transport/kcpmux"
 	"github.com/xtaci/smux"
 )
 

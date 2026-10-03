@@ -8,7 +8,7 @@ import (
 	"io"
 	neturl "net/url"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/browserprofile"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/browserprofile"
 
 	fhttp "github.com/bogdanfinn/fhttp"
 	tlsclient "github.com/bogdanfinn/tls-client"
@@ -33,7 +33,7 @@ func (c *Client) openJoinPage(ctx context.Context, httpClient tlsclient.HttpClie
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			c.log.Warnf("[VK Auth] close join page body: %s", closeErr)
+			c.log.Warnf("[Messenger Auth] close join page body: %s", closeErr)
 		}
 	}()
 	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
@@ -69,7 +69,7 @@ func (c *Client) doRequest(ctx context.Context, httpClient tlsclient.HttpClient,
 	}
 	defer func() {
 		if closeErr := httpResp.Body.Close(); closeErr != nil {
-			c.log.Warnf("[VK Auth] close response body: %s", closeErr)
+			c.log.Warnf("[Messenger Auth] close response body: %s", closeErr)
 		}
 	}()
 

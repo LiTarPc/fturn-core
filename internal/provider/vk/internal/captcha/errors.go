@@ -5,7 +5,7 @@ import (
 	neturl "net/url"
 )
 
-// Error описывает ошибку VK API "captcha required" (error_code 14) и поля,
+// Error описывает ошибку мессенджер API "captcha required" (error_code 14) и поля,
 // необходимые для решения challenge.
 type Error struct {
 	ErrorCode               int
@@ -18,7 +18,7 @@ type Error struct {
 	CaptchaAttempt          string
 }
 
-// ParseError извлекает captcha-challenge из payload ошибки VK API.
+// ParseError извлекает captcha-challenge из payload ошибки мессенджер API.
 // Возвращает nil, если обязательные поля отсутствуют.
 func ParseError(errData map[string]any) *Error {
 	codeFloat, ok := errData["error_code"].(float64)

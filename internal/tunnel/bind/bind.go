@@ -8,7 +8,7 @@ import (
 
 	"github.com/amnezia-vpn/amneziawg-go/conn"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/tunnel"
+	"github.com/LiTarPc/fturn-core/internal/tunnel"
 )
 
 // SinglePeerBind подключает WireGuard к каналу net.PacketConn вместо сокета.

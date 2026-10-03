@@ -2,7 +2,7 @@
 
 ## Требования
 - **VPS с публичным IP**, на котором установлен VPN-сервер (например, WireGuard). VPN должен слушать локальный порт (например, `127.0.0.1:51820/udp`).
-- **Активная ссылка VK Calls**: `https://vk.ru/call/join/...` (создайте сами, звонок не завершайте).
+- **Активная ссылка на звонок мессенджера**: `<ссылка-на-звонок>` (создайте сами, звонок не завершайте).
 
 ---
 
@@ -11,7 +11,7 @@
 Интерактивный скрипт установит Docker или systemd, настроит файрвол и запустит сервер. Запускать от root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/samosvalishe/free-turn-proxy/master/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/LiTarPc/fturn-core/main/scripts/install.sh | sudo bash
 ```
 > Скопируйте параметры клиента, которые скрипт выдаст в конце. Для ручной установки или запуска скрипта без вопросов (non-interactive) см. [Развёртывание (deploy.md)](deploy.md).
 
@@ -23,21 +23,21 @@ curl -fsSL https://raw.githubusercontent.com/samosvalishe/free-turn-proxy/master
 
 **Linux:**
 ```bash
-curl -L -o client https://github.com/samosvalishe/free-turn-proxy/releases/latest/download/client-linux-amd64
+go build -o client ./cmd/client
 chmod +x client
-sudo ./client -listen 127.0.0.1:9000 -peer <vps_ip>:56000 -link "<vk-link>" -obf-profile rtpopus -obf-key <ВАШ_КЛЮЧ> -client-id <ВАШ_CLIENT_ID> -routes
+sudo ./client -listen 127.0.0.1:9000 -peer <vps_ip>:56000 -link "<ссылка-на-звонок>" -obf-profile rtpopus -obf-key <ВАШ_КЛЮЧ> -client-id <ВАШ_CLIENT_ID> -routes
 ```
 
 **Windows (от администратора):**
 ```
-Invoke-WebRequest -Uri https://github.com/samosvalishe/free-turn-proxy/releases/latest/download/client-windows-amd64.exe -OutFile client.exe
-.\client.exe -peer <vps_ip>:56000 -provider vk -link "<vk-link>" -listen 127.0.0.1:9000 -n 12 -streams-per-cred 12 -obf-profile rtpopus3 -obf-key <ВАШ_КЛЮЧ> -dns-servers 192.168.31.1 -dns-mode doh -client-id <ВАШ_CLIENT_ID> -routes
+Invoke-WebRequest -Uri https://github.com/LiTarPc/fturn-core/releases/download/v4.2.0-rc.2/client-windows-amd64.exe -OutFile client.exe
+.\client.exe -peer <vps_ip>:56000  -link "<ссылка-на-звонок>" -listen 127.0.0.1:9000 -n 12 -streams-per-cred 12 -obf-profile rtpopus3 -obf-key <ВАШ_КЛЮЧ> -dns-servers 192.168.31.1 -dns-mode doh -client-id <ВАШ_CLIENT_ID> -routes
 ```
 
 **macOS:**
 ```bash
 # Apple Silicon (M1/M2): client-darwin-arm64 | Intel: client-darwin-amd64
-sudo ./client -listen 127.0.0.1:9000 -peer <vps_ip>:56000 -link "<vk-link>" -obf-profile rtpopus -obf-key <ВАШ_КЛЮЧ> -client-id <ВАШ_CLIENT_ID> -routes
+sudo ./client -listen 127.0.0.1:9000 -peer <vps_ip>:56000 -link "<ссылка-на-звонок>" -obf-profile rtpopus -obf-key <ВАШ_КЛЮЧ> -client-id <ВАШ_CLIENT_ID> -routes
 ```
 
 > **Важно:** В настройках вашего VPN-клиента (например, WireGuard) укажите `Endpoint = 127.0.0.1:9000` и `MTU = 1280`. Включайте VPN *только после того*, как клиент выведет `Ensuring route to ...`.
@@ -56,10 +56,10 @@ sudo ./client -listen 127.0.0.1:9000 -peer <vps_ip>:56000 -link "<vk-link>" -obf
 
 ```bash
 termux-wake-lock
-# Скачивание: curl -L -o client https://github.com/samosvalishe/free-turn-proxy/releases/latest/download/client-android-arm64 && chmod +x client
+# Скачивание: curl -L -o client https://github.com/LiTarPc/fturn-core/releases/download/v4.2.0-rc.2/client-android-arm64 && chmod +x client
 
 # Обязательно укажите ваш ключ и DNS оператора (можно узнать в настройках APN)
-./client -listen 127.0.0.1:9000 -peer <vps_ip>:56000 -link "<vk-link>" -obf-profile rtpopus -obf-key <ВАШ_КЛЮЧ> -dns-servers <ip_dns_оператора> -client-id <ВАШ_CLIENT_ID>
+./client -listen 127.0.0.1:9000 -peer <vps_ip>:56000 -link "<ссылка-на-звонок>" -obf-profile rtpopus -obf-key <ВАШ_КЛЮЧ> -dns-servers <ip_dns_оператора> -client-id <ВАШ_CLIENT_ID>
 ```
 
 > Обязательно добавьте приложение Termux в исключения вашего VPN-клиента. Подробнее в [mobile.md](mobile.md).

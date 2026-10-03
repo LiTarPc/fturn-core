@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/netconn"
-	"github.com/samosvalishe/free-turn-proxy/internal/proxy/tcpserver"
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/kcpmux"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/netconn"
+	"github.com/LiTarPc/fturn-core/internal/proxy/tcpserver"
+	"github.com/LiTarPc/fturn-core/internal/transport/kcpmux"
 	"github.com/xtaci/smux"
 )
 

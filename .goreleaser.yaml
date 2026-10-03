@@ -1,7 +1,7 @@
 # GoReleaser config: https://goreleaser.com
 version: 2
 
-project_name: free-turn-proxy
+project_name: ftcore
 
 before:
   hooks:
@@ -116,7 +116,7 @@ release:
   prerelease: auto
   mode: replace
   draft: false
-  name_template: "{{ .ProjectName }} {{ .Version }}"
+  name_template: "Ftcore {{ .Version }}"
   extra_files:
     - glob: mobile-dist/freeturn.aar
     - glob: mobile-dist/freeturn-sources.jar

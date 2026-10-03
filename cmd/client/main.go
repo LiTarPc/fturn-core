@@ -11,14 +11,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/clientid"
-	"github.com/samosvalishe/free-turn-proxy/internal/config"
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk"
-	"github.com/samosvalishe/free-turn-proxy/internal/proxy/udprelay"
-	"github.com/samosvalishe/free-turn-proxy/internal/session"
-	"github.com/samosvalishe/free-turn-proxy/internal/sub"
-	"github.com/samosvalishe/free-turn-proxy/internal/wire/rtpopus"
+	"github.com/LiTarPc/fturn-core/internal/clientid"
+	"github.com/LiTarPc/fturn-core/internal/config"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk"
+	"github.com/LiTarPc/fturn-core/internal/proxy/udprelay"
+	"github.com/LiTarPc/fturn-core/internal/session"
+	"github.com/LiTarPc/fturn-core/internal/sub"
+	"github.com/LiTarPc/fturn-core/internal/wire/rtpopus"
 )
 
 // version is populated at build time via -ldflags "-X main.version=...".
@@ -57,7 +57,7 @@ func main() {
 	}
 
 	logger := logx.New(cfg.Log.Debug)
-	logger.Infof("Free Turn Proxy client version=%s", version)
+	logger.Infof("Ftcore client version=%s", version)
 
 	idPaths := clientid.DefaultPaths()
 	id, persisted, err := clientid.Resolve(cfg.ClientID, idPaths)

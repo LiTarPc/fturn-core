@@ -7,7 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/stats"
+	"github.com/LiTarPc/fturn-core/internal/stats"
 	"github.com/xtaci/smux"
 )
 

@@ -1,8 +1,8 @@
 package config
 
 import (
-	"github.com/samosvalishe/free-turn-proxy/internal/transport/kcpmux"
-	"github.com/samosvalishe/free-turn-proxy/internal/tunnel"
+	"github.com/LiTarPc/fturn-core/internal/transport/kcpmux"
+	"github.com/LiTarPc/fturn-core/internal/tunnel"
 )
 
 const (

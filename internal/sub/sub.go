@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/uri"
+	"github.com/LiTarPc/fturn-core/internal/uri"
 )
 
 // Sub представляет структуру подписки на серверы.

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/browserprofile"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/browserprofile"
 )
 
 // Живая страница captcha, снятая целиком: PoW-скрипт обфусцирован, поэтому
@@ -102,7 +102,7 @@ const (
 	goldenTelHash = "838102524be656361f2f88dba3dd16d3baaa20b5b33251b472b365ff646b99e9"
 )
 
-// Конверт целиком: порядок ключей, телеметрия персоны и её sha256 - всё, что VK
+// Конверт целиком: порядок ключей, телеметрия персоны и её sha256 - всё, что мессенджер
 // проверяет на check.
 func TestPowEnvelope(t *testing.T) {
 	s := &captchaSession{

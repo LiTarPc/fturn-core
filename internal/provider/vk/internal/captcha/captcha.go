@@ -18,9 +18,9 @@ import (
 	fhttp "github.com/bogdanfinn/fhttp"
 	tlsclient "github.com/bogdanfinn/tls-client"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/browserprofile"
-	"github.com/samosvalishe/free-turn-proxy/internal/randx"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/browserprofile"
+	"github.com/LiTarPc/fturn-core/internal/randx"
 )
 
 var Log logx.Logger = logx.Nop()
@@ -92,7 +92,7 @@ type captchaSession struct {
 	apiHost string
 	log     logx.Logger
 
-	// VK раздаёт страницу то с id.vk.ru, то с api.vk.ru, а от её совпадения с
+	// мессенджер раздаёт страницу то с id.vk.ru, то с api.vk.ru, а от её совпадения с
 	// apiHost зависят Origin, Referer и Sec-Fetch-Site.
 	pageURL    string
 	pageOrigin string
@@ -122,7 +122,7 @@ func (s *captchaSession) logger() logx.Logger {
 	return Log
 }
 
-// Solve запускает авторешение captcha против VK captchaNotRobot API.
+// Solve запускает авторешение captcha против мессенджер captchaNotRobot API.
 func Solve(
 	ctx context.Context,
 	captchaErr *Error,
@@ -275,7 +275,7 @@ func (s *captchaSession) solveOnce(captchaErr *Error) (string, error) {
 	return token, nil
 }
 
-// escalate добивает сессию, если VK на check-е сменил тип челленджа: виджет в
+// escalate добивает сессию, если мессенджер на check-е сменил тип челленджа: виджет в
 // браузере дорисовывает слайдер на месте, а не переоткрывает captcha.
 func (s *captchaSession) escalate(sessionToken string, initContent captchaContentRef, cause error) (string, error) {
 	var mismatch *captchaShowTypeError
@@ -409,7 +409,7 @@ func (s *captchaSession) fetchCaptchaHTML(redirectURI string) (string, error) {
 }
 
 func parseCaptchaPage(html string) (*captchaPage, error) {
-	// Заглушка VK (429/5xx) - временно; поломка парсера на настоящей странице - нет,
+	// Заглушка мессенджер (429/5xx) - временно; поломка парсера на настоящей странице - нет,
 	// её надо эскалировать на следующий режим решения, а не ретраить вечно. Отличаем
 	// по серверным глобалам: PoW-скрипт обфусцирован, переименование его конверта -
 	// это поломка парсера, а не отсутствие страницы.

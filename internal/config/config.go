@@ -4,7 +4,7 @@ package config
 import (
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/tunnel"
+	"github.com/LiTarPc/fturn-core/internal/tunnel"
 )
 
 type TURNOpts struct {

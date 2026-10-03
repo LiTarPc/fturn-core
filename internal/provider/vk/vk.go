@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/logx"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/browserprofile"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/captcha"
-	manualcaptcha "github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/captcha/manual"
-	"github.com/samosvalishe/free-turn-proxy/internal/provider/vk/internal/vkauth"
-	"github.com/samosvalishe/free-turn-proxy/internal/statedir"
+	"github.com/LiTarPc/fturn-core/internal/logx"
+	"github.com/LiTarPc/fturn-core/internal/provider"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/browserprofile"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/captcha"
+	manualcaptcha "github.com/LiTarPc/fturn-core/internal/provider/vk/internal/captcha/manual"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/vkauth"
+	"github.com/LiTarPc/fturn-core/internal/statedir"
 )
 
 type Config struct {
@@ -36,7 +36,7 @@ type Provider struct {
 	auth *vkauth.Client
 }
 
-// New создаёт провайдер авторизации VK.
+// New создаёт провайдер авторизации мессенджер.
 func New(cfg Config, solver ManualSolverFunc) (*Provider, error) {
 	if cfg.Link == "" {
 		return nil, fmt.Errorf("vk: empty Link")

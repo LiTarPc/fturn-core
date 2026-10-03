@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samosvalishe/free-turn-proxy/internal/config"
+	"github.com/LiTarPc/fturn-core/internal/config"
 )
 
 func newWakeSession(t *testing.T) *Session {
@@ -20,7 +20,7 @@ func newWakeSession(t *testing.T) *Session {
 }
 
 // Пробуждение при живом канале не должно стоить рецикла: аллокация переживает сон, а её
-// пересоздание тянет за собой поход в VK и капчу.
+// пересоздание тянет за собой поход в мессенджер и капчу.
 func TestWakeSkipsRecycleWhenTrafficFlows(t *testing.T) {
 	t.Parallel()
 	s := newWakeSession(t)
