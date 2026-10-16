@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -24,7 +25,7 @@ func temporaryProviderError() error {
 
 func TestTenConcurrentReconnectsShareOneServiceRefusal(t *testing.T) {
 	for _, streams := range []int32{0, 2} {
-		t.Run(string(rune('0'+streams)), func(t *testing.T) {
+		t.Run(strconv.FormatInt(int64(streams), 10), func(t *testing.T) {
 			var automatic, manual, chains atomic.Int32
 			c := New(Config{StreamsPerCache: 1, StatePaths: statePaths(t), FingerprintSeed: "fixed-install", StreamsAlive: func() int32 { return streams }})
 			// The refusal must be returned before the ordinary per-fetch throttle.

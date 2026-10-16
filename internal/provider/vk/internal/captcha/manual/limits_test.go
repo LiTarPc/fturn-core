@@ -79,7 +79,10 @@ func TestManualTransportReportsLimitsAndBlocksLaterRequests(t *testing.T) {
 				default:
 					t.Fatal("limit not reported")
 				}
-				_, err = transport.RoundTrip(req)
+				resp, err = transport.RoundTrip(req)
+				if resp != nil {
+					_ = resp.Body.Close()
+				}
 				if !errors.Is(err, captcha.ErrRateLimited) || calls != 1 {
 					t.Fatalf("calls=%d err=%v", calls, err)
 				}
@@ -93,11 +96,11 @@ func TestManualTransportReportsLimitsAndBlocksLaterRequests(t *testing.T) {
 func TestManualServerReturnsLimitWithoutWaitingForTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	errCh := make(chan error, 1)
 	start := func(s *http.Server, _ string) error { go func() { _ = s.Serve(listener) }(); return nil }
 	present := func(string) { errCh <- captcha.ErrRateLimited }
@@ -130,7 +133,11 @@ func TestManualTransportReportsServiceErrorWithoutLeakingRequest(t *testing.T) {
 	default:
 		t.Fatal("service refusal was not reported")
 	}
-	if _, err = transport.RoundTrip(req); !errors.Is(err, captcha.ErrUnavailable) {
+	response, err = transport.RoundTrip(req)
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	if !errors.Is(err, captcha.ErrUnavailable) {
 		t.Fatalf("later request err=%v", err)
 	}
 }

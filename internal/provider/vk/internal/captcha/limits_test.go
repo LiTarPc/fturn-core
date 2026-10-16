@@ -58,4 +58,4 @@ func TestCaptchaPage429StopsBeforeParsing(t *testing.T) {
 	}
 }
 
-func (c *limitTestClient) GetCookies(*url.URL) []*fhttp.Cookie { return nil }
+func (*limitTestClient) GetCookies(*url.URL) []*fhttp.Cookie { return nil }

@@ -25,7 +25,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.26.6"
+  GO_VERSION: "1.26.9"
   GOMOBILE_VERSION: latest
   TASK_VERSION: 3.52.0
 

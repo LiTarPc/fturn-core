@@ -458,11 +458,12 @@ func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 				Log.Debugf("[Captcha Proxy] real browser pow: %s", env)
 			}
 			for k, v := range req.Header {
-				if strings.EqualFold(k, "Cookie") || strings.EqualFold(k, "Authorization") {
+				switch {
+				case strings.EqualFold(k, "Cookie") || strings.EqualFold(k, "Authorization"):
 					Log.Debugf("[Captcha Proxy] header (%s): %s = <redacted>", req.URL.Path, k)
-				} else if strings.EqualFold(k, "Referer") {
+				case strings.EqualFold(k, "Referer"):
 					Log.Debugf("[Captcha Proxy] header (%s): %s = %s", req.URL.Path, k, captcha.SafeURL(strings.Join(v, ", ")))
-				} else {
+				default:
 					Log.Debugf("[Captcha Proxy] header (%s): %s = %s", req.URL.Path, k, strings.Join(v, ", "))
 				}
 			}

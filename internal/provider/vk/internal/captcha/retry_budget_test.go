@@ -64,7 +64,7 @@ type sliderResponseClient struct {
 	calls   int
 }
 
-func (c *sliderResponseClient) GetCookies(*url.URL) []*fhttp.Cookie { return nil }
+func (*sliderResponseClient) GetCookies(*url.URL) []*fhttp.Cookie { return nil }
 func (c *sliderResponseClient) Do(req *fhttp.Request) (*fhttp.Response, error) {
 	c.calls++
 	body := `{"response":{"status":"ok"}}`

@@ -81,8 +81,8 @@ func (c *Client) doRequest(ctx context.Context, httpClient tlsclient.HttpClient,
 		}
 	}()
 
-	if err := captcha.ResponseError(captcha.SafeURL(url), httpResp.StatusCode, httpResp.Header.Get("Retry-After"), nil); err != nil {
-		return nil, err
+	if responseErr := captcha.ResponseError(captcha.SafeURL(url), httpResp.StatusCode, httpResp.Header.Get("Retry-After"), nil); responseErr != nil {
+		return nil, responseErr
 	}
 	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
 		return nil, fmt.Errorf("%s HTTP %d", captcha.SafeURL(url), httpResp.StatusCode)

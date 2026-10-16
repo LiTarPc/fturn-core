@@ -2,6 +2,8 @@
 
 ## 4.2.2 (2026-10-16)
 
+* Build with Go 1.26.9 and update golang.org/x/net to 0.60.0 to address the October HTTP/TLS security advisories.
+
 * Share and persist VK authorization cooldowns across stream reconnects and client restarts, retaining recent failure counters across restarts and clearing them after a successful authorization.
 * Treat VK API error 10 and HTTP service failures as temporary outages: preserve the browser persona and skip manual fallback and credential cycling.
 * Allow the connection watchdog to wait through provider cooldowns, including mobile startup with zero active streams.
