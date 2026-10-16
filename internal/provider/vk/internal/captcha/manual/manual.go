@@ -362,10 +362,14 @@ func startCaptchaServer(srv *http.Server, logPrefix string) error {
 
 // runCaptchaServerAndWait открывает браузер и ждёт токен решения.
 // При срабатывании ctx возвращает ctx.Err(); в обоих случаях HTTP-сервер останавливается.
-func runCaptchaServerAndWait(ctx context.Context, handler http.Handler, captchaURL string, keyCh <-chan string, logPrefix string, present func(string)) (string, error) {
+func runCaptchaServerAndWait(ctx context.Context, handler http.Handler, captchaURL string, keyCh <-chan string, errCh <-chan error, logPrefix string, present func(string)) (string, error) {
+	return runCaptchaServerWithStart(ctx, handler, captchaURL, keyCh, errCh, logPrefix, present, startCaptchaServer)
+}
+
+func runCaptchaServerWithStart(ctx context.Context, handler http.Handler, captchaURL string, keyCh <-chan string, errCh <-chan error, logPrefix string, present func(string), start func(*http.Server, string) error) (string, error) {
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
-	if err := startCaptchaServer(srv, logPrefix); err != nil {
+	if err := start(srv, logPrefix); err != nil {
 		return "", err
 	}
 
@@ -390,7 +394,15 @@ func runCaptchaServerAndWait(ctx context.Context, handler http.Handler, captchaU
 
 	select {
 	case key := <-keyCh:
+		// A refusal takes precedence if concurrent browser requests completed.
+		select {
+		case err := <-errCh:
+			return "", err
+		default:
+		}
 		return key, nil
+	case err := <-errCh:
+		return "", err
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
@@ -441,12 +453,19 @@ func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		req.Body = io.NopCloser(bytes.NewReader(b))
 
 		if Debug {
-			Log.Debugf("[Captcha Proxy] real browser sent %s data: %s", req.URL.Path, string(b))
+			Log.Debugf("[Captcha Proxy] real browser sent %s body_bytes=%d", req.URL.Path, len(b))
 			if env := browserPowEnvelope(b); env != "" {
 				Log.Debugf("[Captcha Proxy] real browser pow: %s", env)
 			}
 			for k, v := range req.Header {
-				Log.Debugf("[Captcha Proxy] header (%s): %s = %s", req.URL.Path, k, strings.Join(v, ", "))
+				switch {
+				case strings.EqualFold(k, "Cookie") || strings.EqualFold(k, "Authorization"):
+					Log.Debugf("[Captcha Proxy] header (%s): %s = <redacted>", req.URL.Path, k)
+				case strings.EqualFold(k, "Referer"):
+					Log.Debugf("[Captcha Proxy] header (%s): %s = %s", req.URL.Path, k, captcha.SafeURL(strings.Join(v, ", ")))
+				default:
+					Log.Debugf("[Captcha Proxy] header (%s): %s = %s", req.URL.Path, k, strings.Join(v, ", "))
+				}
 			}
 		}
 	}
@@ -489,6 +508,7 @@ func SolveViaProxyWithPresenter(ctx context.Context, redirectURI string, dialer 
 
 func solveViaProxy(ctx context.Context, redirectURI string, dialer net.Dialer, profile browserprofile.Profile, present func(string)) (string, error) {
 	keyCh := make(chan string, 1)
+	errCh := make(chan error, 1)
 
 	targetURL, err := neturl.Parse(redirectURI)
 	if err != nil {
@@ -501,7 +521,7 @@ func solveViaProxy(ctx context.Context, redirectURI string, dialer net.Dialer, p
 	if err != nil {
 		return "", fmt.Errorf("captcha proxy client: %w", err)
 	}
-	transport := &loggingTransport{rt: personanet.ProxyRoundTripper(client), started: time.Now()}
+	transport := &limitTransport{rt: &loggingTransport{rt: personanet.ProxyRoundTripper(client), started: time.Now()}, errors: errCh}
 
 	proxy := &httputil.ReverseProxy{
 		Transport: transport,
@@ -674,7 +694,7 @@ func solveViaProxy(ctx context.Context, redirectURI string, dialer net.Dialer, p
 		proxy.ServeHTTP(w, r)
 	})
 
-	return runCaptchaServerAndWait(ctx, mux, localCaptchaURLForTarget(targetURL), keyCh, "proxy HTTP server error", present)
+	return runCaptchaServerAndWait(ctx, mux, localCaptchaURLForTarget(targetURL), keyCh, errCh, "proxy HTTP server error", present)
 }
 
 func openBrowser(url string) {

@@ -78,7 +78,7 @@ func TestWatchFailsWhenNoStreamEverConnects(t *testing.T) {
 	defer cancel()
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- s.watch(ctx, cancel) }()
+	go func() { errCh <- s.watch(ctx, cancel, nil) }()
 
 	select {
 	case err := <-errCh:
@@ -98,7 +98,7 @@ func TestWatchDisabledTimeoutKeepsWaiting(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
-	go func() { errCh <- s.watch(ctx, cancel) }()
+	go func() { errCh <- s.watch(ctx, cancel, nil) }()
 
 	time.Sleep(50 * time.Millisecond)
 	if s.Snapshot().Phase != PhaseConnecting {
@@ -120,7 +120,7 @@ func TestWatchReportsConnected(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
-	go func() { errCh <- s.watch(ctx, cancel) }()
+	go func() { errCh <- s.watch(ctx, cancel, nil) }()
 
 	time.Sleep(100 * time.Millisecond)
 	snap := s.Snapshot()
@@ -142,7 +142,7 @@ func TestWatchCaptchaSuspendsTimeout(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
-	go func() { errCh <- s.watch(ctx, cancel) }()
+	go func() { errCh <- s.watch(ctx, cancel, nil) }()
 
 	time.Sleep(100 * time.Millisecond)
 	if got := s.Snapshot().Phase; got != PhaseCaptcha {
@@ -179,7 +179,7 @@ func TestObserverSeesOnlyChanges(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
-	go func() { errCh <- s.watch(ctx, cancel) }()
+	go func() { errCh <- s.watch(ctx, cancel, nil) }()
 
 	time.Sleep(60 * time.Millisecond)
 	if got := obs.snapshot(); len(got) != 0 {
@@ -355,5 +355,30 @@ func TestReconnectRoutesByMode(t *testing.T) {
 	case <-udp.reconnectCh:
 	default:
 		t.Error("udp mode: reconnectCh empty")
+	}
+}
+
+func TestWatchAllowsProviderCooldownThenEnforcesConnectTimeout(t *testing.T) {
+	s := newTestSession(t, Options{ConnectTimeout: 20 * time.Millisecond, StatusInterval: 5 * time.Millisecond}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	until := time.Now().Add(time.Second).Unix() + 1
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.watch(ctx, cancel, func() int64 { return until }) }()
+	select {
+	case err := <-errCh:
+		t.Fatalf("startup ended during provider pause: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if ctx.Err() != nil || s.Snapshot().Phase != PhaseConnecting {
+		t.Fatal("provider cooldown did not preserve connecting session")
+	}
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, ErrConnectTimeout) || time.Now().Unix() < until {
+			t.Fatalf("err=%v until=%d", err, until)
+		}
+	case <-time.After(4 * time.Second):
+		t.Fatal("connection timeout did not resume after provider pause")
 	}
 }

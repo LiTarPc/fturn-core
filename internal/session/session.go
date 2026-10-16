@@ -220,7 +220,7 @@ func (s *Session) Run(ctx context.Context) (err error) {
 
 	var watchdogErr error
 	bg.Go(guard(func() {
-		watchdogErr = s.watch(runCtx, cancel)
+		watchdogErr = s.watch(runCtx, cancel, prov.BackoffUntilUnix)
 	}))
 
 	relayErr := s.runRelayLoop(runCtx, prov, peer)
@@ -364,7 +364,7 @@ func (s *Session) captchaActive() bool {
 }
 
 // watch публикует стадию подключения и следит за ConnectTimeout.
-func (s *Session) watch(ctx context.Context, cancel context.CancelFunc) error {
+func (s *Session) watch(ctx context.Context, cancel context.CancelFunc, backoffUntil func() int64) error {
 	tick := time.NewTicker(s.opts.StatusInterval)
 	defer tick.Stop()
 
@@ -387,6 +387,14 @@ func (s *Session) watch(ctx context.Context, cancel context.CancelFunc) error {
 				continue
 			}
 
+			// Provider cooldowns are deliberate waiting, not a failed startup.
+			// Keep a complete connection window after the pause expires.
+			if backoffUntil != nil {
+				until := time.Unix(backoffUntil(), 0)
+				if until.After(time.Now()) && until.Add(s.opts.ConnectTimeout).After(deadline) {
+					deadline = until.Add(s.opts.ConnectTimeout)
+				}
+			}
 			phase := PhaseConnecting
 			if n > 0 {
 				phase = PhaseConnected

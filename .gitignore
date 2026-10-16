@@ -16,6 +16,7 @@ coverage.out
 clients.json
 client_config.json
 vk_persona.json
+vk_auth_pause.json
 vk_turn_creds.json
 captcha_page.html
 node_modules

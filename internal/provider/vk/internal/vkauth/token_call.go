@@ -180,10 +180,13 @@ func (c *Client) solveCaptcha(
 		return "", solveErr
 	}
 
-	if solveErr != nil && errors.Is(solveErr, captcha.ErrUnavailable) {
+	if errors.Is(solveErr, captcha.ErrRateLimited) || errors.Is(solveErr, captcha.ErrUnavailable) {
 		c.captchaAttempt = attempt
-		c.log.Warnf("[STREAM %d] [Captcha] captcha unavailable, persona kept: %v", streamID, solveErr)
-		return "", solveErr
+		kind := pauseService
+		if errors.Is(solveErr, captcha.ErrRateLimited) {
+			kind = pauseRate
+		}
+		return "", c.pauseAuth(streamID, kind, solveErr)
 	}
 
 	if solveErr != nil {

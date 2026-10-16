@@ -147,10 +147,10 @@ func TestFetchBoundsPersonaRestarts(t *testing.T) {
 	}
 }
 
-func TestCaptchaUnavailableKeepsPersona(t *testing.T) {
+func TestCaptchaUnavailableKeepsPersonaAndPauses(t *testing.T) {
 	c := newTestClient(t, nil)
 	c.autoSolver = func(context.Context, *captcha.Error, int, tlsclient.HttpClient, browserprofile.Profile) (string, error) {
-		return "", fmt.Errorf("%w: captcha page http 429 (bytes=120)", captcha.ErrUnavailable)
+		return "", fmt.Errorf("%w: captcha page http 503 (bytes=120)", captcha.ErrUnavailable)
 	}
 
 	kept := c.currentPersona()
@@ -164,7 +164,7 @@ func TestCaptchaUnavailableKeepsPersona(t *testing.T) {
 	if c.captchaAttempt != 0 {
 		t.Fatalf("solve-mode ladder advanced to %d", c.captchaAttempt)
 	}
-	if c.LockoutUntilUnix() != 0 {
-		t.Fatal("lockout engaged on an unavailable captcha page")
+	if !errors.Is(err, ErrCaptchaWaitRequired) || c.LockoutUntilUnix() <= 0 {
+		t.Fatal("unavailable captcha did not pause queued authorization attempts")
 	}
 }
