@@ -28,7 +28,7 @@ func TestRunCaptchaServerPresentsAfterListen(t *testing.T) {
 		keyCh <- "token"
 	}
 
-	got, err := runCaptchaServerAndWait(ctx, handler, localCaptchaOrigin(), keyCh, "test", present)
+	got, err := runCaptchaServerAndWait(ctx, handler, localCaptchaOrigin(), keyCh, nil, "test", present)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	neturl "net/url"
 
 	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/browserprofile"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/captcha"
 
 	fhttp "github.com/bogdanfinn/fhttp"
 	tlsclient "github.com/bogdanfinn/tls-client"
@@ -36,6 +38,12 @@ func (c *Client) openJoinPage(ctx context.Context, httpClient tlsclient.HttpClie
 			c.log.Warnf("[Messenger Auth] close join page body: %s", closeErr)
 		}
 	}()
+	if err := captcha.ResponseError("join page", resp.StatusCode, resp.Header.Get("Retry-After"), nil); err != nil {
+		return err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("join page HTTP %d", resp.StatusCode)
+	}
 	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
 		return err
 	}
@@ -73,6 +81,12 @@ func (c *Client) doRequest(ctx context.Context, httpClient tlsclient.HttpClient,
 		}
 	}()
 
+	if err := captcha.ResponseError(captcha.SafeURL(url), httpResp.StatusCode, httpResp.Header.Get("Retry-After"), nil); err != nil {
+		return nil, err
+	}
+	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
+		return nil, fmt.Errorf("%s HTTP %d", captcha.SafeURL(url), httpResp.StatusCode)
+	}
 	body, err := io.ReadAll(httpResp.Body)
 	if err != nil {
 		return nil, err
@@ -80,6 +94,12 @@ func (c *Client) doRequest(ctx context.Context, httpClient tlsclient.HttpClient,
 	var resp map[string]any
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, err
+	}
+	if err := captcha.ResponseError(captcha.SafeURL(url), httpResp.StatusCode, httpResp.Header.Get("Retry-After"), resp); err != nil {
+		// Leave business errors and challenges to the endpoint-specific parser.
+		if errors.Is(err, captcha.ErrUnavailable) || errors.Is(err, captcha.ErrRateLimited) {
+			return nil, err
+		}
 	}
 	return resp, nil
 }

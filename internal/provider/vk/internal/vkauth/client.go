@@ -45,8 +45,13 @@ type Client struct {
 
 	store *Store
 
-	lockout           atomic.Int64
-	networkPauseUntil atomic.Int64
+	lockout              atomic.Int64
+	captchaPause         atomic.Int64
+	pauseKind            atomic.Uint32
+	rateLimitStreak      atomic.Uint32
+	serviceFailureStreak atomic.Uint32
+	cooldown             cooldownStore
+	networkPauseUntil    atomic.Int64
 
 	personaMu sync.RWMutex
 	identity  browserprofile.Identity
@@ -96,6 +101,11 @@ func New(cfg Config) *Client {
 	c.persona = browserprofile.For(c.platform, c.identity)
 	if c.identity.Gen > 0 {
 		c.log.Debugf("[Messenger Auth] Persona gen=%d restored | User-Agent: %s", c.identity.Gen, c.persona.UserAgent)
+	}
+	c.cooldown = newCooldownStore(cfg.StatePaths)
+	c.restorePause(c.cooldown.load())
+	if c.captchaPause.Load() > time.Now().Unix() {
+		c.log.Warnf("[Messenger Auth] Restored auth pause_until=%d", c.captchaPause.Load())
 	}
 	return c
 }
@@ -224,6 +234,10 @@ func (c *Client) engageLockout(d time.Duration) {
 func (c *Client) fetchSerialized(ctx context.Context, link string, streamID int) (string, string, []string, error) {
 	c.fetchMu.Lock()
 	defer c.fetchMu.Unlock()
+	// Check before throttling: every queued worker observes the same refusal.
+	if err := c.authPauseError(); err != nil {
+		return "", "", nil, err
+	}
 
 	minInterval := c.minFetchIntervalFn()
 	elapsed := time.Since(c.lastFetchTime)
@@ -244,6 +258,9 @@ func (c *Client) fetchSerialized(ctx context.Context, link string, streamID int)
 }
 
 func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, string, []string, error) {
+	if err := c.authPauseError(); err != nil {
+		return "", "", nil, err
+	}
 	if time.Now().Unix() < c.networkPauseUntil.Load() {
 		return "", "", nil, fmt.Errorf("VK network temporarily unavailable")
 	}
@@ -263,6 +280,7 @@ func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, 
 
 		user, pass, addrs, err := c.tokenChain(ctx, link, streamID, creds, jar)
 		if err == nil {
+			c.authSucceeded()
 			c.log.Debugf("[STREAM %d] [Messenger Auth] Success with client_id=%s", streamID, creds.ClientID)
 			return user, pass, addrs, nil
 		}
@@ -271,6 +289,17 @@ func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, 
 			return "", "", nil, err
 		}
 		c.log.Warnf("[STREAM %d] [Messenger Auth] Failed with client_id=%s: %v", streamID, creds.ClientID, err)
+		if errors.Is(err, captcha.ErrRateLimited) || errors.Is(err, captcha.ErrUnavailable) {
+			// solveCaptcha records its own refusal; never count it twice.
+			if errors.Is(err, ErrCaptchaWaitRequired) {
+				return "", "", nil, err
+			}
+			kind := pauseService
+			if errors.Is(err, captcha.ErrRateLimited) {
+				kind = pauseRate
+			}
+			return "", "", nil, c.pauseAuth(streamID, kind, err)
+		}
 		if isNetworkTimeout(err) {
 			c.networkPauseUntil.Store(time.Now().Add(30 * time.Second).Unix())
 			c.log.Warnf("[STREAM %d] [Messenger Auth] Network timeout; pausing VK requests for 30 seconds", streamID)
@@ -304,10 +333,6 @@ func (c *Client) fetch(ctx context.Context, link string, streamID int) (string, 
 			errors.Is(err, ErrInvalidJoinLink) || errors.Is(err, ErrAnonymousBlocked) ||
 			errors.Is(err, ErrCallFull) || errors.Is(err, captcha.ErrUnavailable) {
 			return "", "", nil, err
-		}
-		es := err.Error()
-		if strings.Contains(es, "error_code:29") || strings.Contains(es, "error_code: 29") || strings.Contains(es, "Rate limit") {
-			c.log.Warnf("[STREAM %d] [Messenger Auth] Rate limit detected, trying next credentials", streamID)
 		}
 	}
 	return "", "", nil, fmt.Errorf("all VK credentials failed: %w", lastErr)
