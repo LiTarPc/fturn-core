@@ -2,6 +2,7 @@
 
 ## 4.2.3 (2026-10-22)
 
+* Build with Go 1.26.10 to include the crypto/x509 trust verification security fix (GO-2026-6809).
 * Restore sanitized VK response diagnostics, including error messages, codes, subcodes, challenge statuses and additional provider fields, in normal failure logs and debug traces.
 * Distinguish solver token receipt from VK acceptance with explicit captcha attempt and submission events, including repeated challenges, rejected or invalid responses, rate limits, service failures, timeouts and cancellation.
 * Preserve typed errors and provider retry deadlines while attaching diagnostic context to automatic and manual captcha failures, including HTTP errors.

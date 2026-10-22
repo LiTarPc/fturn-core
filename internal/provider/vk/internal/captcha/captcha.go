@@ -813,15 +813,6 @@ func captchaAPIResponseSummary(raw map[string]any) string {
 	return SafeResponse(raw)
 }
 
-func captchaMapKeys(m map[string]any) string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return strings.Join(keys, ",")
-}
-
 // SafeURL - host+path и имена query-параметров без значений: в значениях едет
 // session_token, а различие страниц (variant, blank, expired_at) видно и по ключам.
 func SafeURL(raw string) string {
