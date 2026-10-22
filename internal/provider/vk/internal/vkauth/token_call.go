@@ -26,19 +26,31 @@ func (c *Client) fetchCallToken(
 	data := fmt.Sprintf("vk_join_link=https://vk.ru/call/join/%s&name=%s&access_token=%s",
 		link, escapedName, token1)
 
+	captchaSubmitted := false
 	for {
 		resp, err := c.doRequest(ctx, httpClient, profile, data, urlAddr)
 		if err != nil {
+			if captchaSubmitted {
+				c.log.Warnf("[STREAM %d] [Captcha] event=CAPTCHA_SUBMIT_RESULT outcome=request_failed error=%v", streamID, err)
+			}
 			return "", err
 		}
 
 		if errObj, hasErr := resp["error"].(map[string]any); hasErr {
 			captchaErr := captcha.ParseError(errObj)
+			if captchaSubmitted {
+				outcome := "rejected"
+				if captchaErr != nil && captchaErr.IsCaptcha() {
+					outcome = "challenge_repeated"
+				}
+				c.log.Warnf("[STREAM %d] [Captcha] event=CAPTCHA_SUBMIT_RESULT outcome=%s response=%s", streamID, outcome, captcha.SafeResponse(resp))
+			}
 			if captchaErr != nil && captchaErr.IsCaptcha() {
 				retryData, err := c.solveCaptcha(ctx, httpClient, profile, streamID, link, escapedName, token1, captchaErr)
 				if err != nil {
 					return "", err
 				}
+				captchaSubmitted = true
 				data = retryData
 				continue
 			}
@@ -46,16 +58,25 @@ func (c *Client) fetchCallToken(
 				c.log.Errorf("[STREAM %d] [Messenger Auth] terminal link error: %v", streamID, termErr)
 				return "", termErr
 			}
-			return "", fmt.Errorf("messenger API error: %v", errObj)
+			return "", fmt.Errorf("messenger API error: response=%s", captcha.SafeResponse(errObj))
 		}
 
 		respMap, ok := resp["response"].(map[string]any)
 		if !ok {
-			return "", fmt.Errorf("unexpected getAnonymousToken response: %v", resp)
+			if captchaSubmitted {
+				c.log.Warnf("[STREAM %d] [Captcha] event=CAPTCHA_SUBMIT_RESULT outcome=invalid_response response=%s", streamID, captcha.SafeResponse(resp))
+			}
+			return "", fmt.Errorf("unexpected getAnonymousToken response: response=%s", captcha.SafeResponse(resp))
 		}
 		token2, ok := respMap["token"].(string)
-		if !ok {
-			return "", fmt.Errorf("missing token in response: %v", resp)
+		if !ok || token2 == "" {
+			if captchaSubmitted {
+				c.log.Warnf("[STREAM %d] [Captcha] event=CAPTCHA_SUBMIT_RESULT outcome=invalid_response response=%s", streamID, captcha.SafeResponse(resp))
+			}
+			return "", fmt.Errorf("missing token in response: response=%s", captcha.SafeResponse(resp))
+		}
+		if captchaSubmitted {
+			c.log.Infof("[STREAM %d] [Captcha] event=CAPTCHA_SUBMIT_RESULT outcome=accepted", streamID)
 		}
 		return token2, nil
 	}
@@ -115,6 +136,36 @@ func (c *Client) solveCaptcha(
 
 	var successToken string
 	var solveErr error
+	started := time.Now()
+	mode := "auto"
+	if solveMode == CaptchaSolveModeManual {
+		mode = "manual"
+	}
+	c.log.Infof("[STREAM %d] [Captcha] event=CAPTCHA_SOLVE_STARTED mode=%s attempt=%d", streamID, mode, attempt+1)
+	defer func() {
+		outcome := "token_received"
+		cause := solveErr
+		if cause == nil {
+			cause = err
+		}
+		switch {
+		case ctx.Err() != nil:
+			outcome = "cancelled"
+		case errors.Is(cause, captcha.ErrRateLimited):
+			outcome = "rate_limited"
+		case errors.Is(cause, captcha.ErrUnavailable):
+			outcome = "service_unavailable"
+		case errors.Is(cause, context.DeadlineExceeded):
+			outcome = "timed_out"
+		case cause != nil:
+			outcome = "failed"
+		}
+		logResult := c.log.Infof
+		if cause != nil {
+			logResult = c.log.Warnf
+		}
+		logResult("[STREAM %d] [Captcha] event=CAPTCHA_SOLVE_RESULT mode=%s attempt=%d outcome=%s duration=%s", streamID, mode, attempt+1, outcome, time.Since(started).Truncate(time.Millisecond))
+	}()
 
 	switch solveMode {
 	case CaptchaSolveModeAuto:
@@ -164,7 +215,7 @@ func (c *Client) solveCaptcha(
 			}
 		case <-manualCtx.Done():
 			if errors.Is(manualCtx.Err(), context.DeadlineExceeded) {
-				solveErr = fmt.Errorf("manual captcha timed out after 3m")
+				solveErr = fmt.Errorf("manual captcha timed out after 3m: %w", manualCtx.Err())
 			} else {
 				solveErr = fmt.Errorf("manual captcha interrupted: %w", manualCtx.Err())
 			}
@@ -175,6 +226,10 @@ func (c *Client) solveCaptcha(
 	// Сессию свернули (стоп, смена сети, рецикл) - решателю просто не дали доработать.
 	// Считать это провалом значит жечь поколение персоны и вешать lockout на своих же
 	// перезапусках.
+	if solveErr == nil && successToken == "" {
+		solveErr = errors.New("captcha solver returned an empty success token")
+	}
+
 	if solveErr != nil && ctx.Err() != nil {
 		c.log.Warnf("[STREAM %d] [Captcha] solve interrupted by shutdown: %v", streamID, solveErr)
 		return "", solveErr

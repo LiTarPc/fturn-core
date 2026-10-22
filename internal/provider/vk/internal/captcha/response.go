@@ -48,15 +48,15 @@ func RetryDeadline(err error) time.Time {
 // ResponseError classifies HTTP and API failures before parsing a success body.
 func ResponseError(source string, status int, retryAfter string, raw map[string]any) error {
 	if status == 429 || LimitedResponse(raw) {
-		return NewRateLimitError(source, retryAfter)
+		return WithResponse(NewRateLimitError(source, retryAfter), raw)
 	}
 	if status >= 500 && status <= 599 {
-		return &ServiceError{Source: source, Status: status, RetryAt: parseRetryAfter(retryAfter, time.Now())}
+		return WithResponse(&ServiceError{Source: source, Status: status, RetryAt: parseRetryAfter(retryAfter, time.Now())}, raw)
 	}
 	if payload, ok := raw["error"].(map[string]any); ok {
 		code, _ := strconv.Atoi(captchaStringifyAny(payload["error_code"]))
 		subcode, _ := strconv.Atoi(captchaStringifyAny(payload["subcode"]))
-		return &APIError{Source: source, Code: code, Subcode: subcode, RetryAt: parseRetryAfter(retryAfter, time.Now())}
+		return WithResponse(&APIError{Source: source, Code: code, Subcode: subcode, RetryAt: parseRetryAfter(retryAfter, time.Now())}, raw)
 	}
 	return nil
 }

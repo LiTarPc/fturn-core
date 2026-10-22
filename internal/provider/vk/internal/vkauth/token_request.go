@@ -82,10 +82,12 @@ func (c *Client) doRequest(ctx context.Context, httpClient tlsclient.HttpClient,
 	}()
 
 	if responseErr := captcha.ResponseError(captcha.SafeURL(url), httpResp.StatusCode, httpResp.Header.Get("Retry-After"), nil); responseErr != nil {
-		return nil, responseErr
+		body, _ := io.ReadAll(io.LimitReader(httpResp.Body, 64*1024))
+		return nil, captcha.WithResponseBody(responseErr, body)
 	}
 	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
-		return nil, fmt.Errorf("%s HTTP %d", captcha.SafeURL(url), httpResp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(httpResp.Body, 64*1024))
+		return nil, captcha.WithResponseBody(fmt.Errorf("%s HTTP %d", captcha.SafeURL(url), httpResp.StatusCode), body)
 	}
 	body, err := io.ReadAll(httpResp.Body)
 	if err != nil {
@@ -95,6 +97,7 @@ func (c *Client) doRequest(ctx context.Context, httpClient tlsclient.HttpClient,
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, err
 	}
+	c.log.Debugf("[VK Auth] response source=%s HTTP=%d response=%s", captcha.SafeURL(url), httpResp.StatusCode, captcha.SafeResponse(resp))
 	if err := captcha.ResponseError(captcha.SafeURL(url), httpResp.StatusCode, httpResp.Header.Get("Retry-After"), resp); err != nil {
 		// Leave business errors and challenges to the endpoint-specific parser.
 		if errors.Is(err, captcha.ErrUnavailable) || errors.Is(err, captcha.ErrRateLimited) {
