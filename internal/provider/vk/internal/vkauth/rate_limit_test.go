@@ -154,8 +154,9 @@ func TestProviderRetryAfterLongerThanADaySurvivesRestart(t *testing.T) {
 	paths := []string{filepath.Join(t.TempDir(), "vk_persona.json")}
 	c := New(Config{StatePaths: paths})
 	_ = c.pauseAuth(1, pauseRate, captcha.NewRateLimitError("test", "172800"))
+	until := c.LockoutUntilUnix()
 	restarted := New(Config{StatePaths: paths})
-	if time.Until(time.Unix(restarted.LockoutUntilUnix(), 0)) < 48*time.Hour {
+	if restarted.LockoutUntilUnix() != until || time.Until(time.Unix(until, 0)) < 48*time.Hour-time.Second {
 		t.Fatal("provider pause lost after restart")
 	}
 }

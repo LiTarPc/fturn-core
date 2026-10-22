@@ -20,8 +20,11 @@ func TestProviderErrorTenIsTemporaryAndRedacted(t *testing.T) {
 	if !errors.As(err, &provider) || provider.Code != 10 || provider.Subcode != 5 || !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("err=%v", err)
 	}
-	if errors.Is(err, ErrRateLimited) || strings.Contains(err.Error(), "SECRET") || strings.Contains(err.Error(), "request_params") {
+	if errors.Is(err, ErrRateLimited) || strings.Contains(err.Error(), "SECRET") {
 		t.Fatalf("unsafe error=%v", err)
+	}
+	if !strings.Contains(err.Error(), "Internal server error") || !strings.Contains(err.Error(), "request_params") {
+		t.Fatalf("lost provider details: %v", err)
 	}
 	if time.Until(RetryDeadline(err)) < 119*time.Second {
 		t.Fatal("lost Retry-After")

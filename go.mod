@@ -1,6 +1,6 @@
 module github.com/LiTarPc/fturn-core
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/amnezia-vpn/amneziawg-go v0.2.19

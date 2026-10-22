@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/browserprofile"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/captcha"
 
 	tlsclient "github.com/bogdanfinn/tls-client"
 )
@@ -67,5 +68,5 @@ func missingTurnServerError(resp map[string]any) error {
 	if msg, ok := resp["error_msg"].(string); ok && strings.Contains(msg, "error.webrtc.auth.anonym_token.outdated") {
 		return ErrAnonymTokenOutdated
 	}
-	return fmt.Errorf("missing turn_server in response: %v", resp)
+	return fmt.Errorf("missing turn_server in response: response=%s", captcha.SafeResponse(resp))
 }

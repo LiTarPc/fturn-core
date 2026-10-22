@@ -74,6 +74,7 @@ type captchaCheck struct {
 	SuccessToken string
 	ShowType     string
 	Content      captchaContentRef
+	details      string
 }
 
 type captchaShowTypeError struct {
@@ -619,16 +620,17 @@ func (s *captchaSession) performCaptchaCheck(
 func parseCaptchaCheck(raw map[string]any) (*captchaCheck, error) {
 	resp, ok := raw["response"].(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("invalid captcha check response: keys=%s", captchaMapKeys(raw))
+		return nil, fmt.Errorf("invalid captcha check response: response=%s", SafeResponse(raw))
 	}
 	out := &captchaCheck{
 		Status:       captchaStringifyAny(resp["status"]),
 		SuccessToken: captchaStringifyAny(resp["success_token"]),
 		ShowType:     captchaStringifyAny(resp["show_captcha_type"]),
 		Content:      parseSliderContentRef(resp["content_settings"]),
+		details:      SafeResponse(raw),
 	}
 	if out.Status == "" {
-		return nil, fmt.Errorf("captcha check status missing: keys=%s", captchaMapKeys(resp))
+		return nil, fmt.Errorf("captcha check status missing: response=%s", SafeResponse(raw))
 	}
 	return out, nil
 }
@@ -668,10 +670,10 @@ func (s *captchaSession) solveCheckboxCaptcha(sessionToken string) (string, erro
 		return "", errCaptchaRateLimit
 	}
 	if strings.EqualFold(check.Status, "bot") {
-		return "", fmt.Errorf("%w: checkbox captcha rejected: status=%s", errCaptchaBot, check.Status)
+		return "", fmt.Errorf("%w: checkbox captcha rejected: status=%s response=%s", errCaptchaBot, check.Status, check.details)
 	}
 	if !strings.EqualFold(check.Status, "ok") {
-		return "", fmt.Errorf("checkbox captcha rejected: status=%s", check.Status)
+		return "", fmt.Errorf("checkbox captcha rejected: status=%s response=%s", check.Status, check.details)
 	}
 	if check.SuccessToken == "" {
 		return "", errors.New("captcha success token not found")
@@ -731,10 +733,12 @@ func (s *captchaSession) doRawStatus(
 		}
 	}()
 	if err := ResponseError(SafeURL(endpoint), resp.StatusCode, resp.Header.Get("Retry-After"), nil); err != nil {
-		return nil, resp.StatusCode, err
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		return nil, resp.StatusCode, WithResponseBody(err, body)
 	}
 	if method == fhttp.MethodPost && (resp.StatusCode < 200 || resp.StatusCode >= 300) {
-		return nil, resp.StatusCode, fmt.Errorf("%w: %s HTTP %d", ErrUnavailable, SafeURL(endpoint), resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		return nil, resp.StatusCode, WithResponseBody(fmt.Errorf("%w: %s HTTP %d", ErrUnavailable, SafeURL(endpoint), resp.StatusCode), body)
 	}
 	data, readErr := io.ReadAll(resp.Body)
 	s.logger().Debugf("[Captcha] http %s %s status=%d bytes=%d t=%s after=%s %s form=%s", method, SafeURL(endpoint), resp.StatusCode, len(data), s.elapsed(), time.Since(start).Truncate(time.Millisecond), navSummary(req), captchaFormSummary(form))
@@ -806,25 +810,7 @@ func (s *captchaSession) dumpExchange(req *fhttp.Request, body []byte) {
 }
 
 func captchaAPIResponseSummary(raw map[string]any) string {
-	if errData, ok := raw["error"].(map[string]any); ok {
-		return fmt.Sprintf("error code=%s msg=%q keys=%s", captchaStringifyAny(errData["error_code"]), captchaStringifyAny(errData["error_msg"]), captchaMapKeys(errData))
-	}
-	if resp, ok := raw["response"].(map[string]any); ok {
-		status := captchaStringifyAny(resp["status"])
-		showType := captchaStringifyAny(resp["show_captcha_type"])
-		tokenLen := len(captchaStringifyAny(resp["success_token"]))
-		return fmt.Sprintf("ok status=%q show_type=%q success_token_len=%d keys=%s", status, showType, tokenLen, captchaMapKeys(resp))
-	}
-	return "unknown keys=" + captchaMapKeys(raw)
-}
-
-func captchaMapKeys(m map[string]any) string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return strings.Join(keys, ",")
+	return SafeResponse(raw)
 }
 
 // SafeURL - host+path и имена query-параметров без значений: в значениях едет

@@ -36,7 +36,8 @@ func (t *limitTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	source := captcha.SafeURL(req.URL.String())
 	if err := captcha.ResponseError(source, resp.StatusCode, resp.Header.Get("Retry-After"), nil); err != nil {
 		refusal = err
-	} else if strings.Contains(req.URL.Path, "captchaNotRobot.") {
+	}
+	if refusal != nil || strings.Contains(req.URL.Path, "captchaNotRobot.") {
 		body, readErr := io.ReadAll(resp.Body)
 		closeErr := resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(body))
@@ -56,6 +57,9 @@ func (t *limitTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 					payload = decoded
 				}
 			}
+		}
+		if refusal != nil {
+			refusal = captcha.WithResponseBody(refusal, payload)
 		}
 		var raw map[string]any
 		if json.Unmarshal(payload, &raw) == nil {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/browserprofile"
+	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/captcha"
 
 	tlsclient "github.com/bogdanfinn/tls-client"
 )
@@ -18,11 +19,11 @@ func (c *Client) fetchAnonToken(ctx context.Context, httpClient tlsclient.HttpCl
 	}
 	dataMap, ok := resp["data"].(map[string]any)
 	if !ok {
-		return "", fmt.Errorf("unexpected anon token response: %v", resp)
+		return "", fmt.Errorf("unexpected anon token response: response=%s", captcha.SafeResponse(resp))
 	}
 	token, ok := dataMap["access_token"].(string)
 	if !ok {
-		return "", fmt.Errorf("missing access_token in response: %v", resp)
+		return "", fmt.Errorf("missing access_token in response: response=%s", captcha.SafeResponse(resp))
 	}
 	return token, nil
 }

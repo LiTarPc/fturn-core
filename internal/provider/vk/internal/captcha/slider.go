@@ -99,7 +99,7 @@ func (s *captchaSession) solveSliderCaptcha(
 		}
 		s.logger().Debugf("[Captcha] slider attempt %d status=%s show_type=%s token_len=%d", i+1, check.Status, check.ShowType, len(check.SuccessToken))
 		if strings.EqualFold(check.Status, "bot") {
-			return "", fmt.Errorf("%w: slider rejected", errCaptchaBot)
+			return "", fmt.Errorf("%w: slider rejected response=%s", errCaptchaBot, check.details)
 		}
 		if check.ShowType != "" && !strings.EqualFold(check.ShowType, "slider") {
 			return "", &captchaShowTypeError{ShowType: check.ShowType, Content: check.Content}
@@ -125,7 +125,7 @@ func (s *captchaSession) solveSliderCaptcha(
 func parseSliderPuzzle(raw map[string]any) (*sliderPuzzle, error) {
 	resp, ok := raw["response"].(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("invalid slider content response: %v", raw)
+		return nil, fmt.Errorf("invalid slider content response: response=%s", SafeResponse(raw))
 	}
 	status := captchaStringifyAny(resp["status"])
 	if !strings.EqualFold(status, "ok") {
