@@ -6,6 +6,7 @@ import (
 	"fmt"
 	neturl "net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/LiTarPc/fturn-core/internal/provider/vk/internal/browserprofile"
@@ -13,6 +14,19 @@ import (
 
 	tlsclient "github.com/bogdanfinn/tls-client"
 )
+
+// A BOT refusal disables further automatic checks until process restart.
+var automaticChecksDisabled atomic.Bool
+var errFreshManualChallenge = errors.New("fresh manual captcha challenge required")
+
+func (c *Client) pauseForUser() error {
+	if c.authControl != nil {
+		c.authControl.Pause()
+	} else {
+		c.engageLockout()
+	}
+	return ErrCaptchaWaitRequired
+}
 
 func (c *Client) fetchCallToken(
 	ctx context.Context,
@@ -27,6 +41,8 @@ func (c *Client) fetchCallToken(
 		link, escapedName, token1)
 
 	captchaSubmitted := false
+	freshManual := false
+	originalData := data
 	for {
 		resp, err := c.doRequest(ctx, httpClient, profile, data, urlAddr)
 		if err != nil {
@@ -46,7 +62,22 @@ func (c *Client) fetchCallToken(
 				c.log.Warnf("[STREAM %d] [Captcha] event=CAPTCHA_SUBMIT_RESULT outcome=%s response=%s", streamID, outcome, captcha.SafeResponse(resp))
 			}
 			if captchaErr != nil && captchaErr.IsCaptcha() {
+				if c.advancedCaptcha && captchaSubmitted && c.captchaAttempt == 1 && !freshManual {
+					freshManual = true
+					captchaSubmitted = false
+					data = originalData
+					continue
+				}
+				if c.advancedCaptcha && freshManual && c.captchaAttempt > 1 {
+					return "", c.pauseForUser()
+				}
 				retryData, err := c.solveCaptcha(ctx, httpClient, profile, streamID, link, escapedName, token1, captchaErr)
+				if errors.Is(err, errFreshManualChallenge) && !freshManual {
+					freshManual = true
+					captchaSubmitted = false
+					data = originalData
+					continue
+				}
 				if err != nil {
 					return "", err
 				}
@@ -119,14 +150,20 @@ func (c *Client) solveCaptcha(
 	link, escapedName, token1 string,
 	captchaErr *captcha.Error,
 ) (retryData string, err error) {
+	if c.advancedCaptcha && !c.manualOnly && automaticChecksDisabled.Load() && c.captchaAttempt == 0 {
+		c.captchaAttempt = 1
+	}
 	attempt := c.captchaAttempt
 	c.captchaAttempt++
 
 	solveMode, hasSolveMode := CaptchaSolveModeForAttempt(attempt, c.manualOnly)
 	if !hasSolveMode {
+		if c.advancedCaptcha {
+			return "", c.pauseForUser()
+		}
 		c.log.Warnf("[STREAM %d] [Captcha] No more solve modes available (attempt %d)", streamID, attempt+1)
 		c.burnPersona(streamID)
-		c.engageLockout(60 * time.Second)
+		c.engageLockout()
 		if c.streamsFn() == 0 {
 			c.log.Errorf("[STREAM %d] [Captcha] FATAL: 0 connected streams and solve modes exhausted", streamID)
 			return "", ErrFatalCaptchaNoStreams
@@ -172,6 +209,11 @@ func (c *Client) solveCaptcha(
 		solveFn := c.autoSolver
 		if solveFn == nil {
 			solveFn = c.defaultAutoSolve
+		}
+		if c.browserSolve != nil && !c.advancedCaptcha {
+			solveFn = func(ctx context.Context, e *captcha.Error, _ int, _ tlsclient.HttpClient, p browserprofile.Profile) (string, error) {
+				return c.browserSolve(ctx, e, c.dialer, p)
+			}
 		}
 		if captchaErr.SessionToken != "" && captchaErr.RedirectURI != "" {
 			successToken, solveErr = solveFn(ctx, captchaErr, streamID, httpClient, profile)
@@ -244,6 +286,15 @@ func (c *Client) solveCaptcha(
 		return "", c.pauseAuth(streamID, kind, solveErr)
 	}
 
+	if solveErr != nil && c.advancedCaptcha {
+		if errors.Is(solveErr, captcha.ErrBot) {
+			automaticChecksDisabled.Store(true)
+		}
+		if solveMode == CaptchaSolveModeAuto {
+			return "", errFreshManualChallenge
+		}
+		return "", c.pauseForUser()
+	}
 	if solveErr != nil {
 		c.log.Warnf("[STREAM %d] [Captcha] %s failed (attempt %d): %v",
 			streamID, CaptchaSolveModeLabel(solveMode), attempt+1, solveErr)
@@ -255,7 +306,7 @@ func (c *Client) solveCaptcha(
 			return "", ErrPersonaBurned
 		}
 		c.burnPersona(streamID)
-		c.engageLockout(60 * time.Second)
+		c.engageLockout()
 		if c.streamsFn() == 0 {
 			c.log.Errorf("[STREAM %d] [Captcha] FATAL: 0 connected streams and manual captcha failed/timed out", streamID)
 			return "", ErrFatalCaptchaNoStreams

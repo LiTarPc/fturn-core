@@ -54,6 +54,9 @@ func ClientArgs(c *Client) []string {
 	if c.Obf.Timing > 0 {
 		add("-obf-timing", c.Obf.Timing.String())
 	}
+	if c.VK.AdvancedCaptcha {
+		args = append(args, "-advanced-captcha")
+	}
 	if c.VK.ManualCaptcha {
 		args = append(args, "-manual-captcha")
 	}

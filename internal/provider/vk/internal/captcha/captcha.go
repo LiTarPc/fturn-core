@@ -41,7 +41,8 @@ var (
 
 	ErrRateLimited      = errors.New("captcha session rate limit reached")
 	errCaptchaRateLimit = ErrRateLimited
-	errCaptchaBot       = errors.New("captcha bot challenge")
+	ErrBot              = errors.New("captcha bot challenge")
+	errCaptchaBot       = ErrBot
 
 	ErrUnavailable = errors.New("captcha unavailable")
 
@@ -103,9 +104,10 @@ type captchaSession struct {
 	checked bool
 
 	// browserFP - visitorId FingerprintJS: у живого посетителя стабилен между сессиями.
-	browserFP string
-	debugInfo string
-	powHash   string
+	browserFP  string
+	debugInfo  string
+	powHash    string
+	browserPow string
 
 	// downlink - у живого клиента одно значение на всю captcha, не отдельное на тик.
 	downlink float64
@@ -133,6 +135,17 @@ func Solve(
 	profile browserprofile.Profile,
 	log logx.Logger,
 ) (string, error) {
+	return solve(ctx, captchaErr, streamID, client, profile, log, "")
+}
+
+// SolveWithBrowserPow continues only with a validated envelope for this challenge.
+func SolveWithBrowserPow(ctx context.Context, e *Error, id int, client tlsclient.HttpClient, p browserprofile.Profile, log logx.Logger, value string) (string, error) {
+	if value == "" {
+		return "", ErrInvalidBrowserPow
+	}
+	return solve(ctx, e, id, client, p, log, value)
+}
+func solve(ctx context.Context, captchaErr *Error, streamID int, client tlsclient.HttpClient, profile browserprofile.Profile, log logx.Logger, browserPow string) (string, error) {
 	if captchaErr == nil || captchaErr.SessionToken == "" {
 		return "", fmt.Errorf("no session_token in redirect_uri")
 	}
@@ -140,16 +153,17 @@ func Solve(
 	l.Infof("[STREAM %d] [Captcha] Solving VK Smart Captcha automatically...", streamID)
 
 	s := &captchaSession{
-		ctx:       ctx,
-		client:    client,
-		profile:   profile,
-		domain:    captchaDomain,
-		apiHost:   captchaAPIHost,
-		log:       l,
-		browserFP: profile.VisitorID,
-		downlink:  sessionDownlink(),
-		sensors:   defaultSensorConfig(),
-		started:   time.Now(),
+		ctx:        ctx,
+		browserPow: browserPow,
+		client:     client,
+		profile:    profile,
+		domain:     captchaDomain,
+		apiHost:    captchaAPIHost,
+		log:        l,
+		browserFP:  profile.VisitorID,
+		downlink:   sessionDownlink(),
+		sensors:    defaultSensorConfig(),
+		started:    time.Now(),
 	}
 
 	var solveErr error
@@ -161,7 +175,7 @@ func Solve(
 		}
 		l.Debugf("[STREAM %d] [Captcha] solve attempt %d failed: %v", streamID, attempt, solveErr)
 		// Повторяем только то, что не дошло до check.
-		if s.checked || errors.Is(solveErr, ErrUnavailable) || errors.Is(solveErr, errCaptchaRateLimit) || errors.Is(solveErr, errCaptchaBot) {
+		if errors.Is(solveErr, ErrInvalidBrowserPow) || s.checked || errors.Is(solveErr, ErrUnavailable) || errors.Is(solveErr, errCaptchaRateLimit) || errors.Is(solveErr, errCaptchaBot) {
 			return "", solveErr
 		}
 
@@ -190,10 +204,17 @@ func (s *captchaSession) solveOnce(captchaErr *Error) (string, error) {
 
 	page, err := parseCaptchaPage(html)
 	if err != nil {
-		s.logger().Debugf("[Captcha] page parse failed: %v (bytes=%d); pow script near: %s", err, len(html), powSnippet(html))
+		s.logger().Debugf("[Captcha] page parse failed (bytes=%d)", len(html))
 		return "", err
 	}
 
+	if s.browserPow != "" {
+		s.powHash, err = validateBrowserPow(s.browserPow, page.Pow)
+		if err != nil {
+			return "", err
+		}
+		s.profile = profileFromBrowserPow(s.profile, s.browserPow)
+	}
 	// Браузер тянет подресурсы параллельно с исполнением скрипта, не после него.
 	assets := parsePageAssets(html)
 	assetsDone := make(chan struct{})
@@ -205,7 +226,9 @@ func (s *captchaSession) solveOnce(captchaErr *Error) (string, error) {
 	defer func() { <-assetsDone }()
 
 	s.logger().Debugf("[Captcha] solving pow difficulty=%d assets=%d", page.Pow.Difficulty, len(assets))
-	s.powHash, err = s.powEnvelope(page.Pow)
+	if s.browserPow == "" {
+		s.powHash, err = s.powEnvelope(page.Pow)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -459,14 +482,6 @@ func parseCaptchaDebugInfo(html string) string {
 
 // powSnippet - окно вокруг конверта PoW: при следующей смене разметки этого
 // хватает, чтобы увидеть новый формат, не выгружая страницу целиком.
-func powSnippet(html string) string {
-	const window = 400
-	i := strings.Index(html, "captchaPowResult")
-	if i < 0 {
-		return "<no captchaPowResult on page>"
-	}
-	return html[max(i-window, 0):min(i+window, len(html))]
-}
 
 // parseCaptchaInitGlobal вынимает window.init - серверный дамп, из которого
 // виджет берёт хосты и challenge.

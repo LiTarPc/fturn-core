@@ -20,9 +20,14 @@ import (
 )
 
 type Config struct {
+	AuthControl     AuthControl
 	Credentials     []VKCredentials
 	Dialer          net.Dialer
 	ManualOnly      bool
+	AdvancedCaptcha bool
+	BrowserSolver   ManualSolveFunc
+	PowCapture      PowCaptureFunc
+
 	StreamsPerCache int
 	StreamsAlive    func() int32
 	AutoSolver      AutoSolveFunc
@@ -34,14 +39,18 @@ type Config struct {
 }
 
 type Client struct {
-	credentials []VKCredentials
-	dialer      net.Dialer
-	manualOnly  bool
-	platform    browserprofile.Platform
-	streamsFn   func() int32
-	autoSolver  AutoSolveFunc
-	manualSolve ManualSolveFunc
-	log         logx.Logger
+	authControl     AuthControl
+	credentials     []VKCredentials
+	dialer          net.Dialer
+	manualOnly      bool
+	advancedCaptcha bool
+	browserSolve    ManualSolveFunc
+	powCapture      PowCaptureFunc
+	platform        browserprofile.Platform
+	streamsFn       func() int32
+	autoSolver      AutoSolveFunc
+	manualSolve     ManualSolveFunc
+	log             logx.Logger
 
 	store *Store
 
@@ -69,15 +78,19 @@ type tokenChainFn func(ctx context.Context, link string, streamID int, creds VKC
 
 func New(cfg Config) *Client {
 	c := &Client{
-		credentials: cfg.Credentials,
-		dialer:      cfg.Dialer,
-		manualOnly:  cfg.ManualOnly,
-		platform:    cfg.Platform,
-		streamsFn:   cfg.StreamsAlive,
-		autoSolver:  cfg.AutoSolver,
-		manualSolve: cfg.ManualSolver,
-		log:         cfg.Log,
-		store:       NewStore(cfg.StreamsPerCache),
+		authControl:     cfg.AuthControl,
+		credentials:     cfg.Credentials,
+		dialer:          cfg.Dialer,
+		manualOnly:      cfg.ManualOnly,
+		advancedCaptcha: cfg.AdvancedCaptcha,
+		powCapture:      cfg.PowCapture,
+		browserSolve:    cfg.BrowserSolver,
+		platform:        cfg.Platform,
+		streamsFn:       cfg.StreamsAlive,
+		autoSolver:      cfg.AutoSolver,
+		manualSolve:     cfg.ManualSolver,
+		log:             cfg.Log,
+		store:           NewStore(cfg.StreamsPerCache),
 	}
 	if len(c.credentials) == 0 {
 		c.credentials = DefaultCredentials
@@ -225,8 +238,8 @@ func (*Client) Name() string { return "vk" }
 
 func (*Client) IsAuthError(err error) bool { return IsAuthError(err) }
 
-func (c *Client) engageLockout(d time.Duration) {
-	c.lockout.Store(time.Now().Add(d).Unix())
+func (c *Client) engageLockout() {
+	c.lockout.Store(time.Now().Add(time.Minute).Unix())
 }
 
 // fetchSerialized сериализует fetch и держит min-интервал между запросами (анти
@@ -234,6 +247,12 @@ func (c *Client) engageLockout(d time.Duration) {
 func (c *Client) fetchSerialized(ctx context.Context, link string, streamID int) (string, string, []string, error) {
 	c.fetchMu.Lock()
 	defer c.fetchMu.Unlock()
+	if c.authControl != nil {
+		if err := c.authControl.Acquire(ctx); err != nil {
+			return "", "", nil, err
+		}
+		defer c.authControl.Release()
+	}
 	// Check before throttling: every queued worker observes the same refusal.
 	if err := c.authPauseError(); err != nil {
 		return "", "", nil, err
@@ -251,6 +270,9 @@ func (c *Client) fetchSerialized(ctx context.Context, link string, streamID int)
 		}
 	}
 	user, pass, addrs, err := c.fetch(ctx, link, streamID)
+	if err == nil && c.authControl != nil {
+		c.authControl.Authorized()
+	}
 	if ctx.Err() == nil {
 		c.lastFetchTime = time.Now()
 	}

@@ -316,15 +316,29 @@ func startLocked(configJSON string, tunFD int, withTunnel bool) error {
 		)
 	}
 
+	capture := vk.ProxyPowCapture(nil, nil)
+	if powSink.Load() != nil {
+		capture = vk.ProxyPowCapture(func(uri string) { captchaActive.Store(true); emitBrowserPow(uri) }, func() { captchaActive.Store(false); emitBrowserPow("") })
+	}
+	var gate *vk.AuthGate
+	if cfg.VK.AdvancedCaptcha {
+		gate = vk.NewAuthGate()
+		activeAuthGate.Store(gate)
+		defer activeAuthGate.CompareAndSwap(gate, nil)
+	}
 	deps := session.Deps{
 		Logger:        logger,
 		Observer:      observer{},
 		Solver:        solver,
-		CaptchaActive: captchaActive.Load,
+		PowCapture:    capture,
+		CaptchaActive: func() bool { return captchaActive.Load() || (gate != nil && gate.Active()) },
 		Options: session.Options{
 			ConnectTimeout: connectTimeout,
 			Traffic:        true,
 		},
+	}
+	if gate != nil {
+		deps.AuthControl = gate
 	}
 	if parts != nil {
 		deps.LocalPipe = parts.relaySide
@@ -376,4 +390,13 @@ func startLocked(configJSON string, tunFD int, withTunnel bool) error {
 	}()
 
 	return nil
+}
+
+var activeAuthGate atomic.Pointer[vk.AuthGate]
+
+// ResumeCaptcha resumes a user-paused advanced authorization, if still active.
+func ResumeCaptcha() {
+	if gate := activeAuthGate.Load(); gate != nil {
+		gate.Resume()
+	}
 }

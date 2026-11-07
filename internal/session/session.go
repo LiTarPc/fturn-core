@@ -90,9 +90,12 @@ func (o Options) withDefaults() Options {
 }
 
 type Deps struct {
+	AuthControl   vk.AuthControl
 	Logger        logx.Logger
 	Observer      Observer
 	Solver        vk.ManualSolverFunc
+	PowCapture    vk.PowCaptureFunc
+	BrowserSolver vk.ManualSolverFunc
 	CaptchaActive func() bool
 	// LocalPipe подменяет локальный UDP-сокет прямым каналом в памяти.
 	LocalPipe net.PacketConn
@@ -184,7 +187,7 @@ func (s *Session) Run(ctx context.Context) (err error) {
 	appDialer := dnsdial.AppDialer(s.cfg.DNS.Mode)
 	dnsdial.InstallGlobalResolver(s.cfg.DNS.Mode)
 
-	prov, err := buildProvider(s.cfg, appDialer, &s.connected, s.deps.Solver, log, s.total)
+	prov, err := buildProvider(s.cfg, appDialer, &s.connected, s.deps.Solver, log, s.total, providerExtra{capture: s.deps.PowCapture, auth: s.deps.AuthControl, browser: s.deps.BrowserSolver})
 	if err != nil {
 		return fmt.Errorf("provider init: %w", err)
 	}

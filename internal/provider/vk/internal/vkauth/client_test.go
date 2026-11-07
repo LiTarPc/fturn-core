@@ -215,7 +215,7 @@ func TestLockoutBlocksFetch(t *testing.T) {
 		t.Fatal("tokenChain must not be called while lockout is active")
 		return "", "", nil, nil
 	})
-	c.engageLockout(time.Minute)
+	c.engageLockout()
 	if c.LockoutUntilUnix() <= time.Now().Unix() {
 		t.Fatal("lockout deadline not in future")
 	}

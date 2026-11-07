@@ -55,6 +55,8 @@ func ParseClient(args []string, errOut io.Writer) (*Client, error) {
 	fs.IntVar(&r.StreamsPerCred, "streams-per-cred", r.StreamsPerCred, "TURN-потоков на один кеш реквизитов мессенджера")
 	fs.BoolVar(&r.Debug, "debug", r.Debug, "подробные debug-логи")
 	fs.BoolVar(&r.ManualCaptcha, "manual-captcha", r.ManualCaptcha, "ручная captcha мессенджера в браузере вместо автоматической")
+	fs.BoolVar(&r.AutoCaptcha, "auto-captcha", r.AutoCaptcha, "automatically solve captcha; false selects manual-only mode")
+	fs.BoolVar(&r.AdvancedCaptcha, "advanced-captcha", r.AdvancedCaptcha, "capture browser PoW before automatic captcha solving (opt-in)")
 	fs.StringVar(&r.Platform, "platform", r.Platform, "класс устройства для авторизации: desktop | mobile")
 	fs.StringVar(&r.DNSMode, "dns-mode", r.DNSMode, "резолвер клиента: plain | doh | auto")
 	fs.StringVar(&r.DNSServers, "dns-servers", r.DNSServers, "свои UDP/53 DNS через запятую: ip[:port][,ip[:port]...]")

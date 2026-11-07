@@ -33,6 +33,7 @@ type powParams struct {
 // powResult - конверт window.captchaPowResult: виджету уходит не голый хэш.
 // Порядок полей повторяет порядок ключей у JSON.stringify страницы.
 type powResult struct {
+	Error      string          `json:"error,omitempty"`
 	Hash       string          `json:"hash"`
 	Nonce      int             `json:"nonce"`
 	DurationMs int64           `json:"duration_ms"`
@@ -80,7 +81,7 @@ func (s *captchaSession) powEnvelope(p powParams) (string, error) {
 		return "", fmt.Errorf("captcha pow encode: %w", err)
 	}
 	// Печатаем до base64: диффать с живым браузером (см. DecodePowEnvelope) иначе нечем.
-	s.logger().Debugf("[Captcha] pow envelope: %s", envelope)
+	s.logger().Debugf("[Captcha] PoW envelope prepared")
 	return p.Prefix + base64.StdEncoding.EncodeToString(envelope), nil
 }
 

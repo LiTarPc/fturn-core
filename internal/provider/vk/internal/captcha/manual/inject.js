@@ -4,7 +4,37 @@
     const { local: LOCAL, upstream: UPSTREAM } = window.__ftpCaptcha ?? {};
     const PROXY = '/generic_proxy?proxy_url=';
     const RESULT = '/local-captcha-result';
+    const POW_RESULT = window.__ftpCaptcha?.powPath;
+    let powSent = false;
     const CHECK = 'captchaNotRobot.check';
+
+    // In auto mode, use the actual browser's computed PoW envelope. This runs
+    // before VK's inline PoW script, so its final assignment is observable.
+    if (window.__ftpCaptcha?.capturePow && POW_RESULT) {
+        let powValue = window.captchaPowResult;
+        const capturePow = (value) => {
+            if (powSent || typeof value !== 'string' || value.length > 131072) return;
+            const dot = value.indexOf('.');
+            if (dot < 0) return;
+            try {
+                const envelope = JSON.parse(atob(value.slice(dot + 1)));
+                if (!/^[0-9a-f]{64}$/.test(envelope.hash || '') || envelope.error || !envelope.telemetry) return;
+                powSent = true;
+                const body = `pow=${encodeURIComponent(value)}`;
+                fetch(POW_RESULT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body,
+                }).then((res) => { if (res.ok) showDone(); else powSent = false; }).catch(() => { powSent = false; });
+            } catch {}
+        };
+        Object.defineProperty(window, 'captchaPowResult', {
+            configurable: true,
+            enumerable: true,
+            get: () => powValue,
+            set: (value) => { powValue = value; capturePow(value); },
+        });
+    }
 
     function rewriteUrl(url) {
         if (!url || typeof url !== 'string') return url;
@@ -32,7 +62,7 @@
     const extractToken = (data) => data?.response?.success_token;
 
     function sendToken(token) {
-        if (!token) return;
+        if (!token || window.__ftpCaptcha?.capturePow) return;
         const body = `token=${encodeURIComponent(token)}`;
 
         // sendBeacon переживает уход со страницы (mobile Safari)
@@ -62,7 +92,7 @@
     function showPending() {
         document.body.style.background = '#000';
         const banner = document.createElement('div');
-        banner.textContent = 'Ftcore - captcha';
+        banner.textContent = 'free turn proxy - captcha';
         banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;padding:12px;text-align:center;font:13.5px ui-monospace,monospace;color:#e1e1e1;background:#000';
         document.body.append(banner);
     }
@@ -71,7 +101,7 @@
         document.body.style.background = '#000';
         document.body.innerHTML =
             '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:ui-monospace,monospace;text-align:center">' +
-            '<div style="font-size:16.5px;font-weight:700;color:#e1e1e1">Ftcore</div>' +
+            '<div style="font-size:16.5px;font-weight:700;color:#e1e1e1">free turn proxy</div>' +
             '<div style="font-size:13.5px;color:#818181">gg</div></div>';
         setTimeout(() => window.close(), 1000);
     }

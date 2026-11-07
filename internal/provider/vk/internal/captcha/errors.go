@@ -52,7 +52,7 @@ func ParseError(errData map[string]any) *Error {
 		if parsed, err := neturl.Parse(redirectURI); err == nil {
 			sessionToken = parsed.Query().Get("session_token")
 		} else {
-			Log.Warnf("[Captcha] failed to parse redirect_uri: %v", err)
+			Log.Warnf("[Captcha] failed to parse redirect_uri")
 			return nil
 		}
 	}
