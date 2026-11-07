@@ -1,18 +1,22 @@
-# Передача тестового TURN/FTcore 4.2.4-test.2 — 2026-11-07
+# Передача тестового TURN/FTcore 4.2.4-test.3 — 2026-11-07
 
-Кандидат заморожен по исходникам `2364657987bcd8c493f66aaf992fefc6bc619b0e`, ветка `codex/turn-browser-pow-4.2.4-test.2`.
+Кандидат заморожен по исходникам `91ee6cda0ef9175c5eb5c286068fb4197a7daaff`, ветка `codex/turn-browser-pow-4.2.4-test.3`.
 Это клиентский тестовый комплект. Windows-сборка выполнена и запущена; Android CLI/AAR и native fixture ELF собраны и проверены по структуре. Запуск native fixtures на телефоне и настоящий WebView/VK E2E пока ожидают централизованной проверки. Приложение, его vendored cores, установленный APK, пользовательские данные, работающий VPN и серверы этой задачей не менялись.
+
+## Исправление после test.2
+
+Test.3 заменяет test.2 для дальнейшей интеграции. После получения success token API мог вернуть ошибку без нового challenge; этот путь теперь допускает только одну свежую ручную попытку в advanced, а после её отказа останавливает новую авторизацию. Старый IPC browser/manual при отказе, повторной капче и timeout также ждёт явного resume вместо перебора client_id. Добавлена регрессия на все шесть сценариев. Замороженные файлы test.2 сохранены неизменными.
 
 ## Состав и происхождение
 
-Каталог: `C:/Users/LiTar/Desktop/fturn-core-4.1.3/vk-turn-fix/dist/test-client-4.2.4-test.2`.
+Каталог: `C:/Users/LiTar/Desktop/fturn-core-4.1.3/vk-turn-fix/dist/test-client-4.2.4-test.3`.
 
 | Файл | Назначение |
 |---|---|
-| client-windows-amd64.exe | Windows amd64, PE, версия v4.2.4-test.2 |
+| client-windows-amd64.exe | Windows amd64, PE, версия v4.2.4-test.3 |
 | client-android-arm64 | Android ARM64 CLI, ELF64 PIE AArch64, для последующей интеграции как native core |
-| freeturn-4.2.4-test.2.aar | Android API 24+, arm64-v8a и armeabi-v7a |
-| freeturn-4.2.4-test.2-sources.jar | Java-обёртки gomobile |
+| freeturn-4.2.4-test.3.aar | Android API 24+, arm64-v8a и armeabi-v7a |
+| freeturn-4.2.4-test.3-sources.jar | Java-обёртки gomobile |
 | manifest.json / SHA256SUMS.txt | Исходный commit, версия протокола, результаты проверок, SHA-256 |
 | native-fixtures/ | Отдельные Android ARM64 PIE test ELF, необходимые testdata и run-on-device.ps1 |
 
@@ -56,16 +60,16 @@ Routes остаются `/v1/captcha/<id>`, `/v1/captcha/<id>/host`, `/v1/auth/r
 
 | Проверка | Результат |
 |---|---|
-| Основной модуль | 454 верхнеуровневых теста PASS; 657 с subtests; 0 skip |
-| third_party/turn | 135 PASS; 313 с subtests/seed cases |
-| third_party/smux | 2 PASS; 4 с subtests |
+| Основной модуль | 455 верхнеуровневых тестов PASS; 664 с subtests; 0 skip |
+| third_party/turn | 135 PASS; 313 с subtests/seed cases, из test.2: исходники зависимости не менялись |
+| third_party/smux | 2 PASS; 4 с subtests, из test.2: исходники зависимости не менялись |
 | Пакет релея с integration tag | 26 PASS; 38 с subtests; 0 skip |
 | golangci-lint 2.12.2, включая integration | 0 issues |
 | go vet | PASS |
 | JS observer в Node VM | PASS: final assignment, intermediate/error filtering, one-shot, token separation, legacy mode |
 | Windows EXE | PASS: версия, help, incomplete IPC, v1/advanced incompatibility, unknown protocol, conflicting aliases |
 | Android CLI + пять native test ELF | ELF64 PIE AArch64 |
-| AAR | API 24 build; ARM64/ARMv7 ELF; Go 1.26.10; версия 4.2.4-test.2; namespace com.freeturn.core; старый EventSink и новые методы проверены |
+| AAR | API 24 build; ARM64/ARMv7 ELF; Go 1.26.10; версия 4.2.4-test.3; namespace com.freeturn.core; старый EventSink и новые методы проверены |
 
 Полная локальная fixture-цепочка проверяет browser PoW и отправку success token вплоть до TURN username/password/addresses, fallback при отсутствии хоста и неверном PoW, manual priority. Отдельно проверяются malformed/mismatched proof, error field, telemetry hash, negative nonce/duration, BOT, 429/Retry-After, 10/5, fresh manual без смены identity/client_id, repeated challenge, явная пауза, cache-hit и fresh-authorization events, приватный HTTP endpoint, late/stale replies и точный старый JSON envelope без добавления пустого error.
 
@@ -83,7 +87,7 @@ Routes остаются `/v1/captcha/<id>`, `/v1/captcha/<id>/host`, `/v1/auth/r
 ./native-fixtures/run-on-device.ps1 -Serial '<serial>' -Adb '<path-to-adb.exe>'
 ```
 
-Скрипт создаёт только `/data/local/tmp/fturn-turn-fixture-4.2.4-test.2`, копирует fixtures, запускает выбранные suites. APK не устанавливает, приложения/VPN не останавливает, данные не очищает. TMPDIR указывает на отдельную tmp-папку. Native fixture checks используют локальные/подставные ответы и loopback, без VK.
+Скрипт создаёт только `/data/local/tmp/fturn-turn-fixture-4.2.4-test.3`, копирует fixtures, запускает выбранные suites. APK не устанавливает, приложения/VPN не останавливает, данные не очищает. TMPDIR указывает на отдельную tmp-папку. Native fixture checks используют локальные/подставные ответы и loopback, без VK.
 
 | ELF | -test.run | Рабочая папка |
 |---|---|---|
@@ -100,7 +104,7 @@ Routes остаются `/v1/captcha/<id>`, `/v1/captcha/<id>/host`, `/v1/auth/r
 ## Воспроизводимость
 
 ```powershell
-./scripts/build-client-test.ps1 -Version '4.2.4-test.2' -GoExe '<Go-1.26.10-go.exe>'
+./scripts/build-client-test.ps1 -Version '4.2.4-test.3' -GoExe '<Go-1.26.10-go.exe>'
 node scripts/test-captcha-observer.cjs
 go test -count=1 ./...
 go -C third_party/turn test -count=1 ./...
