@@ -1,4 +1,4 @@
-// Package turndial инкапсулирует подключение, аутентификацию и аллокацию сессий TURN.
+// Package turndial manages bounded, cancellable TURN client connections.
 package turndial
 
 import (
@@ -16,180 +16,232 @@ import (
 	"github.com/pion/turn/v5"
 )
 
-// Config задаёт параметры подключения к TURN-серверу.
 type Config struct {
-	HostOverride string
-	PortOverride string
-	TransportUDP bool
-	DialTimeout  time.Duration
-	Log          logx.Logger
-	StreamID     int
+	HostOverride, PortOverride string
+	TransportUDP               bool
+	DialTimeout                time.Duration
+	Log                        logx.Logger
+	StreamID                   int
 }
-
-// Stream представляет активную TURN-аллокацию.
 type Stream struct {
 	Relay         net.PacketConn
 	ServerUDPAddr *net.UDPAddr
-	// PermDead closes on failed TURN renewal or a stopped transport receiver.
-	PermDead <-chan struct{}
-	close    func() error
+	PermDead      <-chan struct{}
+	close         func() error
+	cause         func() error
+	deletion      func() string
 }
 
-// closeOncePacketConn preserves the first deallocation result when both the
-// DTLS layer and the session controller close the same relay.
-type closeOncePacketConn struct {
-	net.PacketConn
-	once sync.Once
-	err  error
-}
-
-func (c *closeOncePacketConn) Close() error {
-	c.once.Do(func() { c.err = c.PacketConn.Close() })
-	return c.err
-}
-
-// Close освобождает аллокацию, TURN-клиент и транспортное соединение.
 func (s *Stream) Close() error {
 	if s == nil || s.close == nil {
 		return nil
 	}
 	return s.close()
 }
+func (s *Stream) Err() error {
+	if s == nil || s.cause == nil {
+		return nil
+	}
+	return s.cause()
+}
+func (s *Stream) DeletionStatus() string {
+	if s == nil || s.deletion == nil {
+		return "unknown"
+	}
+	return s.deletion()
+}
 
-// Open выполняет подключение к TURN-серверу и создаёт релей-соединение.
-func Open(ctx context.Context, cfg Config, peer *net.UDPAddr, user, pass, rawAddr string) (*Stream, error) {
-	urlhost, urlport, err := net.SplitHostPort(rawAddr)
+type closeOncePacketConn struct {
+	net.PacketConn
+	once      sync.Once
+	err       error
+	closeFunc func() error
+}
+
+func (c *closeOncePacketConn) Close() error {
+	c.once.Do(func() {
+		if c.closeFunc != nil {
+			c.err = c.closeFunc()
+		} else {
+			c.err = c.PacketConn.Close()
+		}
+	})
+	return c.err
+}
+
+const setupTimeout = 20 * time.Second
+const deletionTimeout = 900 * time.Millisecond
+
+func Open(ctx context.Context, cfg Config, peer *net.UDPAddr, user, pass, rawAddr string) (_ *Stream, err error) {
+	if err = ctx.Err(); err != nil {
+		return nil, err
+	}
+	setupCtx, cancel := context.WithTimeout(ctx, setupTimeout)
+	defer cancel()
+	host, port, err := net.SplitHostPort(rawAddr)
 	if err != nil {
 		return nil, fmt.Errorf("parse TURN addr: %w", err)
 	}
 	if cfg.HostOverride != "" {
-		urlhost = cfg.HostOverride
+		host = cfg.HostOverride
 	}
 	if cfg.PortOverride != "" {
-		urlport = cfg.PortOverride
+		port = cfg.PortOverride
 	}
-	turnServerAddr := net.JoinHostPort(urlhost, urlport)
-	turnServerUDPAddr, err := net.ResolveUDPAddr("udp", turnServerAddr)
+	endpoint := net.JoinHostPort(host, port)
+	release, err := turnAllocations.acquire(setupCtx, endpoint, user)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { release(err) }()
+	ip := net.ParseIP(host)
+	if ip == nil {
+		addresses, e := net.DefaultResolver.LookupIPAddr(setupCtx, host)
+		if e != nil {
+			return nil, fmt.Errorf("resolve TURN addr: %w", e)
+		}
+		if len(addresses) == 0 {
+			return nil, fmt.Errorf("resolve TURN addr: no addresses")
+		}
+		ip = addresses[0].IP
+	}
+	numeric := net.JoinHostPort(ip.String(), port)
+	serverAddr, err := net.ResolveUDPAddr("udp", numeric)
 	if err != nil {
 		return nil, fmt.Errorf("resolve TURN addr: %w", err)
 	}
-	turnServerAddr = turnServerUDPAddr.String()
-
 	dialTimeout := cfg.DialTimeout
-	if dialTimeout == 0 {
+	if dialTimeout <= 0 {
 		dialTimeout = 5 * time.Second
 	}
-
-	var (
-		turnConn  net.PacketConn
-		closeConn func() error
-	)
+	dialCtx, dialCancel := context.WithTimeout(setupCtx, dialTimeout)
+	defer dialCancel()
+	transport := "tcp"
 	if cfg.TransportUDP {
-		raw, derr := (&net.Dialer{Control: netctl.Apply}).Dial("udp", turnServerUDPAddr.String())
-		if derr != nil {
-			return nil, fmt.Errorf("dial TURN (udp): %w", derr)
-		}
+		transport = "udp"
+	}
+	raw, err := (&net.Dialer{Control: netctl.Apply}).DialContext(dialCtx, transport, numeric)
+	if err != nil {
+		return nil, fmt.Errorf("dial TURN (%s): %w", transport, err)
+	}
+	var pc net.PacketConn
+	if cfg.TransportUDP {
 		c, ok := raw.(*net.UDPConn)
 		if !ok {
 			_ = raw.Close()
-			return nil, fmt.Errorf("turndial: expected *net.UDPConn, got %T", raw)
+			return nil, fmt.Errorf("TURN: expected UDP socket")
 		}
-		turnConn = &netconn.ConnectedUDPConn{UDPConn: c}
-		closeConn = c.Close
+		pc = &netconn.ConnectedUDPConn{UDPConn: c}
 	} else {
-		dctx, cancel := context.WithTimeout(ctx, dialTimeout)
-		defer cancel()
-		d := net.Dialer{Control: netctl.Apply}
-		c, derr := d.DialContext(dctx, "tcp", turnServerAddr)
-		if derr != nil {
-			return nil, fmt.Errorf("dial TURN (tcp): %w", derr)
-		}
-		// Разрезание внутри STUN magic cookie (байты 4-7) ломает DPI сигнатуры без TCP-реассемблинга.
-		wrapped := &netconn.SplitFirstWriteConn{Conn: c, SplitAt: 5 + randx.Intn(3), Delay: 20 * time.Millisecond}
-		turnConn = turn.NewSTUNConn(wrapped)
-		closeConn = c.Close
+		pc = turn.NewSTUNConn(&netconn.SplitFirstWriteConn{Conn: raw, SplitAt: 5 + randx.Intn(3), Delay: 20 * time.Millisecond})
 	}
-
-	var addrFamily turn.RequestedAddressFamily
-	if peer.IP.To4() != nil {
-		addrFamily = turn.RequestedAddressFamilyIPv4
-	} else {
-		addrFamily = turn.RequestedAddressFamilyIPv6
-	}
-
-	// мессенджер отбрасывает CreatePermission refresh с кодом 400; канал поддерживается через ChannelBind.
-	permDead := make(chan struct{})
-	var permOnce sync.Once
+	var socketOnce sync.Once
+	closeSocket := func() { socketOnce.Do(func() { _ = raw.Close() }) }
 	var closing atomic.Bool
-	connectedAt := time.Now()
-	markDead := func() { permOnce.Do(func() { close(permDead) }) }
-	loggerFactory := &permWatchFactory{
-		inner:     &logxFactory{log: cfg.Log, stream: cfg.StreamID},
-		threshold: permFailThreshold,
-		onDead:    markDead,
+	var deadOnce sync.Once
+	dead := make(chan struct{})
+	var failure atomic.Pointer[error]
+	markDead := func(e error) {
+		if e != nil {
+			failure.CompareAndSwap(nil, &e)
+		}
+		deadOnce.Do(func() { close(dead) })
 	}
-	client, err := turn.NewClient(&turn.ClientConfig{
-		STUNServerAddr:            turnServerAddr,
-		TURNServerAddr:            turnServerAddr,
-		Conn:                      turnConn,
-		Net:                       netconn.New(),
-		Username:                  user,
-		Password:                  pass,
-		RequestedAddressFamily:    addrFamily,
-		PermissionRefreshInterval: 24 * time.Hour,
-		BindingRefreshInterval:    2 * time.Minute,
-		BindingCheckInterval:      10 * time.Second,
-		LoggerFactory:             loggerFactory,
-		OnListenerError: func(err error) {
-			if closing.Load() {
-				return
+	renewal := &renewalWatch{onDead: markDead}
+	af := turn.RequestedAddressFamilyIPv6
+	if peer.IP.To4() != nil {
+		af = turn.RequestedAddressFamilyIPv4
+	}
+	log := logx.OrNop(cfg.Log)
+	client, err := turn.NewClient(&turn.ClientConfig{STUNServerAddr: numeric, TURNServerAddr: numeric, Conn: pc, Net: netconn.New(), Username: user, Password: pass, RequestedAddressFamily: af,
+		PermissionRefreshInterval: 24 * time.Hour, BindingRefreshInterval: 2 * time.Minute, BindingCheckInterval: 10 * time.Second,
+		LoggerFactory:       &logxFactory{log: log, stream: cfg.StreamID},
+		OnAllocationRefresh: func(e error) { renewal.result(false, e) }, OnChannelBind: func(e error) { renewal.result(true, e) },
+		OnListenerError: func(e error) {
+			if !closing.Load() {
+				markDead(fmt.Errorf("TURN receiver: %w", e))
+				log.Warnf("[STREAM %d] TURN receiver stopped: server=%s transport=%s error=%v", cfg.StreamID, numeric, transport, e)
 			}
-			loggerFactory.inner.NewLogger(turncScope).Warnf("TURN receiver stopped: server=%s transport_udp=%t connection_age=%s error=%v; reconnecting", turnServerAddr, cfg.TransportUDP, time.Since(connectedAt).Truncate(time.Millisecond), err)
-			markDead()
 		},
 	})
 	if err != nil {
-		if cerr := closeConn(); cerr != nil {
-			err = fmt.Errorf("%w (close: %v)", err, cerr)
-		}
+		closeSocket()
 		return nil, fmt.Errorf("create TURN client: %w", err)
 	}
-	if err = client.Listen(); err != nil {
-		closing.Store(true)
-		client.Close()
-		if cerr := closeConn(); cerr != nil {
-			err = fmt.Errorf("%w (close: %v)", err, cerr)
+	abort := func() { closing.Store(true); closeSocket(); client.Close() }
+	hookDone := make(chan struct{})
+	stop := context.AfterFunc(setupCtx, func() { defer close(hookDone); abort() })
+	transferred := false
+	finishSetup := sync.OnceFunc(func() {
+		if !stop() {
+			<-hookDone
 		}
+	})
+	defer func() {
+		finishSetup()
+		if !transferred {
+			abort()
+		}
+	}()
+	if err = client.Listen(); err != nil {
 		return nil, fmt.Errorf("TURN listen: %w", err)
 	}
 	relay, err := client.Allocate()
 	if err != nil {
-		closing.Store(true)
-		client.Close()
-		if cerr := closeConn(); cerr != nil {
-			err = fmt.Errorf("%w (close: %v)", err, cerr)
+		if setupCtx.Err() != nil {
+			return nil, fmt.Errorf("TURN allocate: %w", setupCtx.Err())
 		}
 		return nil, fmt.Errorf("TURN allocate: %w", err)
 	}
-
-	sharedRelay := &closeOncePacketConn{PacketConn: relay}
+	if setupCtx.Err() != nil {
+		_ = relay.Close()
+		return nil, setupCtx.Err()
+	}
+	// Complete ownership transfer before cancelling the setup-only context.
+	finishSetup()
+	if setupCtx.Err() != nil {
+		_ = relay.Close()
+		return nil, setupCtx.Err()
+	}
+	var confirmed atomic.Bool
+	shared := &closeOncePacketConn{PacketConn: relay}
+	shared.closeFunc = func() error {
+		closing.Store(true)
+		closer, ok := relay.(interface{ CloseWithConfirmation() error })
+		if !ok {
+			return fmt.Errorf("TURN relay cannot confirm deletion")
+		}
+		deleteCtx, deleteCancel := context.WithTimeout(context.WithoutCancel(ctx), deletionTimeout)
+		defer deleteCancel()
+		finished := make(chan struct{})
+		stopDelete := context.AfterFunc(deleteCtx, func() { defer close(finished); abort() })
+		e := closer.CloseWithConfirmation()
+		if !stopDelete() {
+			<-finished
+		}
+		if deleteCtx.Err() != nil {
+			return fmt.Errorf("TURN deletion unconfirmed: %w", deleteCtx.Err())
+		}
+		if e == nil {
+			confirmed.Store(true)
+		}
+		return e
+	}
 	var closeOnce sync.Once
 	var closeErr error
-
-	return &Stream{
-		Relay:         sharedRelay,
-		ServerUDPAddr: turnServerUDPAddr,
-		PermDead:      permDead,
-		close: func() error {
-			closeOnce.Do(func() {
-				closing.Store(true)
-				closeErr = sharedRelay.Close()
-				client.Close()
-				if cerr := closeConn(); cerr != nil && closeErr == nil {
-					closeErr = cerr
-				}
-			})
-			return closeErr
-		},
-	}, nil
+	stream := &Stream{Relay: shared, ServerUDPAddr: serverAddr, PermDead: dead, cause: func() error {
+		if p := failure.Load(); p != nil {
+			return *p
+		}
+		return nil
+	}, deletion: func() string {
+		if confirmed.Load() {
+			return "confirmed"
+		}
+		return "unconfirmed"
+	}}
+	stream.close = func() error { closeOnce.Do(func() { closeErr = shared.Close(); abort() }); return closeErr }
+	log.Infof("[STREAM %d] TURN server IP: %s", cfg.StreamID, serverAddr.IP)
+	transferred = true
+	return stream, nil
 }

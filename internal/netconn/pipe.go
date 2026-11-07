@@ -2,54 +2,55 @@ package netconn
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"sync"
 	"time"
 )
 
-// BiCopy закрывает оба conn, как только копирование в любую сторону завершится.
-func BiCopy(ctx context.Context, c1, c2 net.Conn, errf func(format string, v ...any)) (int64, int64) {
-	ctx2, cancel := context.WithCancel(ctx)
-	setDeadline := func(t time.Time, what string) {
-		if err := c1.SetDeadline(t); err != nil && errf != nil {
-			errf("BiCopy: c1 %s: %v", what, err)
-		}
-		if err := c2.SetDeadline(t); err != nil && errf != nil {
-			errf("BiCopy: c2 %s: %v", what, err)
+// BiCopy preserves TCP half-close: EOF ends only the opposite write direction.
+// Connections without CloseWrite retain the previous full-cancellation behavior.
+func BiCopy(ctx context.Context, c1, c2 net.Conn, errf func(string, ...any)) (int64, int64) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	setDeadline := func(t time.Time) {
+		for _, c := range []net.Conn{c1, c2} {
+			if err := c.SetDeadline(t); err != nil && errf != nil {
+				errf("BiCopy: deadline: %v", err)
+			}
 		}
 	}
 	hookDone := make(chan struct{})
-	stopOnCancel := context.AfterFunc(ctx2, func() {
-		defer close(hookDone)
-		setDeadline(time.Now(), "SetDeadline")
-	})
-
+	stop := context.AfterFunc(ctx, func() { defer close(hookDone); setDeadline(time.Now()) })
+	copySide := func(dst, src net.Conn) int64 {
+		n, err := io.Copy(dst, src)
+		if err != nil && !errors.Is(err, io.EOF) {
+			if errf != nil {
+				errf("BiCopy: copy: %v", err)
+			}
+			cancel()
+			return n
+		}
+		if cw, ok := dst.(interface{ CloseWrite() error }); ok {
+			if err = cw.CloseWrite(); err == nil {
+				return n
+			}
+			if errf != nil {
+				errf("BiCopy: CloseWrite: %v", err)
+			}
+		}
+		cancel()
+		return n
+	}
 	var wg sync.WaitGroup
-	var c1FromC2, c2FromC1 int64
-	wg.Go(func() {
-		defer cancel()
-		n, err := io.Copy(c1, c2)
-		c1FromC2 = n
-		if err != nil && errf != nil {
-			errf("BiCopy: c1<-c2: %v", err)
-		}
-	})
-	wg.Go(func() {
-		defer cancel()
-		n, err := io.Copy(c2, c1)
-		c2FromC1 = n
-		if err != nil && errf != nil {
-			errf("BiCopy: c2<-c1: %v", err)
-		}
-	})
+	var a, b int64
+	wg.Go(func() { a = copySide(c1, c2) })
+	wg.Go(func() { b = copySide(c2, c1) })
 	wg.Wait()
-
-	// Дедлайны сбрасываются только после того, как хук отменён или доработал - иначе
-	// он взвёлся бы следом и оставил conn'ы просроченными навсегда.
-	if !stopOnCancel() {
+	if !stop() {
 		<-hookDone
 	}
-	setDeadline(time.Time{}, "clear deadline")
-	return c1FromC2, c2FromC1
+	setDeadline(time.Time{})
+	return a, b
 }

@@ -2,6 +2,7 @@
 package stats
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"sync/atomic"
@@ -100,6 +101,14 @@ func (c *CountingConn) Write(p []byte) (int, error) {
 	n, err := c.Conn.Write(p)
 	c.Stats.AddTx(n)
 	return n, err
+}
+
+// CloseWrite preserves half-close through the accounting wrapper.
+func (c *CountingConn) CloseWrite() error {
+	if cw, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return cw.CloseWrite()
+	}
+	return errors.ErrUnsupported
 }
 
 // WireConn учитывает байты на проводе (с оверхедом транспорта и ретрансмитами) - только

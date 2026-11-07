@@ -31,24 +31,27 @@ type AllocationConfig struct {
 	PermissionRefreshInterval time.Duration
 	BindingRefreshInterval    time.Duration
 	BindingCheckInterval      time.Duration
+	OnAllocationRefresh       func(error)
+	OnChannelBind             func(error)
 }
 
 type allocation struct {
-	client            Client                // Read-only
-	relayedAddr       net.Addr              // Read-only
-	serverAddr        net.Addr              // Read-only
-	permMap           *permissionMap        // Thread-safe
-	integrity         stun.MessageIntegrity // Read-only
-	username          stun.Username         // Read-only
-	realm             stun.Realm            // Read-only
-	_nonce            stun.Nonce            // Needs mutex x
-	_lifetime         time.Duration         // Needs mutex x
-	net               transport.Net         // Thread-safe
-	refreshAllocTimer *PeriodicTimer        // Thread-safe
-	refreshPermsTimer *PeriodicTimer        // Thread-safe
-	readTimer         *time.Timer           // Thread-safe
-	mutex             sync.RWMutex          // Thread-safe
-	log               logging.LeveledLogger // Read-only
+	client              Client                // Read-only
+	relayedAddr         net.Addr              // Read-only
+	serverAddr          net.Addr              // Read-only
+	permMap             *permissionMap        // Thread-safe
+	integrity           stun.MessageIntegrity // Read-only
+	username            stun.Username         // Read-only
+	realm               stun.Realm            // Read-only
+	_nonce              stun.Nonce            // Needs mutex x
+	_lifetime           time.Duration         // Needs mutex x
+	net                 transport.Net         // Thread-safe
+	refreshAllocTimer   *PeriodicTimer        // Thread-safe
+	refreshPermsTimer   *PeriodicTimer        // Thread-safe
+	readTimer           *time.Timer           // Thread-safe
+	mutex               sync.RWMutex          // Thread-safe
+	log                 logging.LeveledLogger // Read-only
+	onAllocationRefresh func(error)
 }
 
 func (a *allocation) setNonceFromMsg(msg *stun.Message) {
@@ -127,6 +130,9 @@ func (a *allocation) refreshAllocation(lifetime time.Duration, dontWait bool) er
 	if lifetime > 0 && updatedLifetime.Duration <= 0 {
 		return fmt.Errorf("%w: allocation expired (zero lifetime)", errFailedToRefreshAllocation)
 	}
+	if lifetime == 0 && updatedLifetime.Duration != 0 {
+		return fmt.Errorf("%w: deletion not confirmed (lifetime=%s)", errFailedToRefreshAllocation, updatedLifetime.Duration)
+	}
 	a.setLifetime(updatedLifetime.Duration)
 	a.log.Debugf("Updated lifetime: %d seconds; next_refresh=%s allocation_expires=%s", int(a.lifetime().Seconds()), a.lifetime()/2, started.Add(a.lifetime()).Format(time.RFC3339Nano))
 
@@ -167,6 +173,9 @@ func (a *allocation) onRefreshTimers(id int) {
 			if !errors.Is(err, errTryAgain) {
 				break
 			}
+		}
+		if a.onAllocationRefresh != nil {
+			a.onAllocationRefresh(err)
 		}
 		if err != nil {
 			a.log.Warnf("Failed to refresh allocation: %s", err)

@@ -52,6 +52,9 @@ type ClientConfig struct {
 	// Pending transactions are canceled before the callback. The caller owns the socket
 	// and should ignore errors caused by its own shutdown.
 	OnListenerError func(error)
+	// Renewal callbacks are called once after a completed renewal attempt.
+	OnAllocationRefresh func(error)
+	OnChannelBind       func(error)
 
 	// PermissionTimeout sets the refresh interval of permissions. Defaults to 2 minutes.
 	PermissionRefreshInterval time.Duration
@@ -81,21 +84,24 @@ type Client struct {
 	stunServerAddr net.Addr       // Read-only
 	turnServerAddr net.Addr       // Read-only
 
-	username        stun.Username          // Read-only
-	password        string                 // Read-only
-	realm           stun.Realm             // Read-only
-	integrity       stun.MessageIntegrity  // Read-only
-	software        stun.Software          // Read-only
-	trMap           *client.TransactionMap // Thread-safe
-	rto             time.Duration          // Read-only
-	relayedConn     *client.UDPConn        // Protected by mutex ***
-	tcpAllocation   *client.TCPAllocation  // Protected by mutex ***
-	allocTryLock    client.TryLock         // Thread-safe
-	listenTryLock   client.TryLock         // Thread-safe
-	mutex           sync.RWMutex           // Thread-safe
-	mutexTrMap      sync.Mutex             // Thread-safe
-	log             logging.LeveledLogger  // Read-only
-	onListenerError func(error)            // Read-only
+	username            stun.Username          // Read-only
+	password            string                 // Read-only
+	realm               stun.Realm             // Read-only
+	integrity           stun.MessageIntegrity  // Read-only
+	software            stun.Software          // Read-only
+	trMap               *client.TransactionMap // Thread-safe
+	rto                 time.Duration          // Read-only
+	relayedConn         *client.UDPConn        // Protected by mutex ***
+	tcpAllocation       *client.TCPAllocation  // Protected by mutex ***
+	allocTryLock        client.TryLock         // Thread-safe
+	listenTryLock       client.TryLock         // Thread-safe
+	mutex               sync.RWMutex           // Thread-safe
+	mutexTrMap          sync.Mutex             // Thread-safe
+	log                 logging.LeveledLogger  // Read-only
+	onListenerError     func(error)
+	onAllocationRefresh func(error)
+	onChannelBind       func(error)
+	closed              bool // protected by mutexTrMap            // Read-only
 
 	// If EVEN-PORT Attribute should be sent in Allocation
 	evenPort bool
@@ -260,6 +266,8 @@ func NewClient(config *ClientConfig) (*Client, error) { //nolint:gocyclo,cyclop
 		reservationToken:          config.reservationToken,
 		requestedAddressFamily:    requestedAddressFamily,
 		onListenerError:           config.OnListenerError,
+		onAllocationRefresh:       config.OnAllocationRefresh,
+		onChannelBind:             config.OnChannelBind,
 		permissionRefreshInterval: config.PermissionRefreshInterval,
 		bindingRefreshInterval:    config.BindingRefreshInterval,
 		bindingCheckInterval:      config.BindingCheckInterval,
@@ -346,6 +354,7 @@ func (c *Client) Close() {
 	c.mutexTrMap.Lock()
 	defer c.mutexTrMap.Unlock()
 
+	c.closed = true
 	c.trMap.CloseAndDeleteAll()
 }
 
@@ -535,6 +544,8 @@ func (c *Client) Allocate() (net.PacketConn, error) {
 		PermissionRefreshInterval: c.permissionRefreshInterval,
 		BindingRefreshInterval:    c.bindingRefreshInterval,
 		BindingCheckInterval:      c.bindingCheckInterval,
+		OnAllocationRefresh:       c.onAllocationRefresh,
+		OnChannelBind:             c.onChannelBind,
 	})
 	c.setRelayedUDPConn(relayedConn)
 	c.setReservationToken(reservationToken)
@@ -618,7 +629,22 @@ func (c *Client) PerformTransaction(msg *stun.Message, to net.Addr, ignoreResult
 		IgnoreResult: ignoreResult,
 	})
 
+	c.mutexTrMap.Lock()
+	if c.closed {
+		c.mutexTrMap.Unlock()
+		// Existing callers close the client before sending the final best-effort
+		// deallocation. Preserve this non-waiting path without restarting timers.
+		if ignoreResult {
+			_, err := c.conn.WriteTo(raw, to)
+			return client.TransactionResult{}, err
+		}
+		return client.TransactionResult{}, net.ErrClosed
+	}
 	c.trMap.Insert(trKey, tr)
+	c.mutexTrMap.Unlock()
+	if !ignoreResult {
+		defer func() { c.mutexTrMap.Lock(); tr.StopRtxTimer(); c.trMap.Delete(trKey); c.mutexTrMap.Unlock() }()
+	}
 
 	c.log.Tracef("Start %s transaction %s to %s", msg.Type, trKey, tr.To)
 	_, err := c.conn.WriteTo(tr.Raw, to)
@@ -626,7 +652,11 @@ func (c *Client) PerformTransaction(msg *stun.Message, to net.Addr, ignoreResult
 		return client.TransactionResult{}, err
 	}
 
-	tr.StartRtxTimer(c.onRtxTimeout)
+	c.mutexTrMap.Lock()
+	if !c.closed {
+		tr.StartRtxTimer(c.onRtxTimeout)
+	}
+	c.mutexTrMap.Unlock()
 
 	// If ignoreResult is true, get the transaction going and return immediately
 	if ignoreResult {

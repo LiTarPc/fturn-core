@@ -104,9 +104,12 @@ type Session struct {
 	streams    map[uint32]*stream // all streams in this session
 	streamLock sync.Mutex         // locks streams
 
-	die     chan struct{} // flag session has died
-	dieOnce sync.Once
-	closed  int32 // atomic flag for fast IsClosed check
+	failure      chan struct{}
+	failureOnce  sync.Once
+	firstFailure atomic.Pointer[error]
+	die          chan struct{} // flag session has died
+	dieOnce      sync.Once
+	closed       int32 // atomic flag for fast IsClosed check
 
 	// socket error handling
 	socketReadError      atomic.Value
@@ -136,6 +139,7 @@ type Session struct {
 func newSession(config *Config, conn io.ReadWriteCloser, client bool) *Session {
 	s := new(Session)
 	s.die = make(chan struct{})
+	s.failure = make(chan struct{})
 	s.conn = conn
 	s.config = config
 	s.streams = make(map[uint32]*stream)
@@ -292,6 +296,7 @@ func (s *Session) notifyBucket() {
 }
 
 func (s *Session) notifyReadError(err error) {
+	s.noteFailure(err)
 	s.socketReadErrorOnce.Do(func() {
 		s.socketReadError.Store(err)
 		close(s.chSocketReadError)
@@ -299,6 +304,7 @@ func (s *Session) notifyReadError(err error) {
 }
 
 func (s *Session) notifyWriteError(err error) {
+	s.noteFailure(err)
 	s.socketWriteErrorOnce.Do(func() {
 		s.socketWriteError.Store(err)
 		close(s.chSocketWriteError)
@@ -306,6 +312,7 @@ func (s *Session) notifyWriteError(err error) {
 }
 
 func (s *Session) notifyProtoError(err error) {
+	s.noteFailure(err)
 	s.protoErrorOnce.Do(func() {
 		s.protoError.Store(err)
 		close(s.chProtoError)
@@ -314,7 +321,7 @@ func (s *Session) notifyProtoError(err error) {
 
 // IsClosed does a safe check to see if we have shutdown
 func (s *Session) IsClosed() bool {
-	return atomic.LoadInt32(&s.closed) != 0
+	return atomic.LoadInt32(&s.closed) != 0 || s.firstFailure.Load() != nil
 }
 
 // NumStreams returns the number of currently open streams
@@ -532,6 +539,7 @@ func (s *Session) keepalive() {
 				// recvLoop may block while bucket is 0, in this case,
 				// session should not be closed.
 				if atomic.LoadInt32(&s.bucket) > 0 {
+					s.noteFailure(errors.New("smux: keepalive timeout"))
 					s.Close()
 					return
 				}
@@ -708,4 +716,24 @@ func (s *Session) writeFrameInternal(f Frame, deadline <-chan time.Time, class C
 		// Cannot recycle channel here - sendLoop may still write to it
 		return 0, ErrTimeout
 	}
+}
+
+// ErrorChan is closed on the first fatal read, write, protocol or keepalive error.
+func (s *Session) ErrorChan() <-chan struct{} { return s.failure }
+
+// Err preserves the first failure even after cleanup closes the transport.
+func (s *Session) Err() error {
+	if e := s.firstFailure.Load(); e != nil {
+		return *e
+	}
+	if atomic.LoadInt32(&s.closed) != 0 {
+		return io.ErrClosedPipe
+	}
+	return nil
+}
+func (s *Session) noteFailure(err error) {
+	if err == nil {
+		return
+	}
+	s.failureOnce.Do(func() { s.firstFailure.Store(&err); close(s.failure) })
 }

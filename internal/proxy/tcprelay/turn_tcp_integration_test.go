@@ -211,7 +211,7 @@ func sessionByID(pool *sessionPool, id int) *pooledSession {
 
 func assertIntegrationEcho(t *testing.T, addr string, payload []byte) {
 	t.Helper()
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	conn, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(t.Context(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("local TCP dial: %v", err)
 	}

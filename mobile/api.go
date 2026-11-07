@@ -203,17 +203,27 @@ func SetDNSServers(servers string) {
 func stopLocked() {
 	l := current.Swap(nil)
 	if l == nil {
-		// Ожидание освобождения дескриптора сессией перед возможным Restart.
-		if prev := finishing.Swap(nil); prev != nil {
-			waitDone(prev.done, stopTimeout)
+		if previous := finishing.Load(); previous != nil {
+			waitDone(previous.done, stopTimeout)
+			select {
+			case <-previous.done:
+				finishing.CompareAndSwap(previous, nil)
+			default:
+			}
 		}
 		lastStop.Store(&final{state: StateIdle})
 		return
 	}
-	finishing.CompareAndSwap(l, nil)
+	finishing.Store(l)
 	l.cancel()
 	waitDone(l.done, stopTimeout)
 	closeTunnel(l.tunnel)
+	select {
+	case <-l.done:
+		finishing.CompareAndSwap(l, nil)
+	default:
+		coreLog().Warnf("Previous core session is still stopping; a new Start will wait for completion")
+	}
 	lastStop.Store(&final{state: StateIdle})
 }
 
@@ -246,6 +256,14 @@ func startLocked(configJSON string, tunFD int, withTunnel bool) error {
 		}
 	}()
 
+	if previous := finishing.Load(); previous != nil {
+		select {
+		case <-previous.done:
+			finishing.CompareAndSwap(previous, nil)
+		default:
+			return errors.New("previous core session is still stopping")
+		}
+	}
 	raw := []byte(configJSON)
 
 	// Резолв подписки до парсинга даёт обязательный peer.

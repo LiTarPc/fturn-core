@@ -120,11 +120,12 @@ type statusInfo struct {
 
 // Session инкапсулирует состояние и управление клиентской сессией.
 type Session struct {
-	cfg     *config.Client
-	deps    Deps
-	opts    Options
-	total   int
-	traffic *traffic
+	turnBackoffUntil atomic.Int64
+	cfg              *config.Client
+	deps             Deps
+	opts             Options
+	total            int
+	traffic          *traffic
 
 	connected   atomic.Int32
 	status      atomic.Pointer[statusInfo]
@@ -220,7 +221,7 @@ func (s *Session) Run(ctx context.Context) (err error) {
 
 	var watchdogErr error
 	bg.Go(guard(func() {
-		watchdogErr = s.watch(runCtx, cancel, prov.BackoffUntilUnix)
+		watchdogErr = s.watch(runCtx, cancel, func() int64 { return max(prov.BackoffUntilUnix(), s.turnBackoffUntil.Load()) })
 	}))
 
 	relayErr := s.runRelayLoop(runCtx, prov, peer)
@@ -464,6 +465,7 @@ func (s *Session) relayUDP(ctx context.Context, prov provider.Provider, getCreds
 		GetCreds:     getCreds,
 		ClientID:     s.cfg.ClientID,
 		TrafficStats: s.trafficStats(),
+		OnBackoff:    s.noteTURNBackoff,
 	}
 	return udprelay.Run(ctx, dialer, prov, log, &s.connected, routeCallback, params, peer, local, s.total)
 }
@@ -491,6 +493,7 @@ func (s *Session) relayTCP(ctx context.Context, prov provider.Provider, getCreds
 		KCPProfile:   s.cfg.KCP.Profile,
 		ClientID:     s.cfg.ClientID,
 		TrafficStats: s.trafficStats(),
+		OnBackoff:    s.noteTURNBackoff,
 	}
 	return tcprelay.Run(ctx, deps, params, peer, s.cfg.Proxy.Listen, s.total)
 }
@@ -512,4 +515,15 @@ func (s *Session) trafficStats() *stats.Stats {
 		return nil
 	}
 	return s.traffic.stats
+}
+
+// noteTURNBackoff prevents the startup deadline from cancelling a deliberate
+// allocation pause. It does not reset or kill healthy channels.
+func (s *Session) noteTURNBackoff(until time.Time) {
+	value := until.Unix()
+	for current := s.turnBackoffUntil.Load(); value > current; current = s.turnBackoffUntil.Load() {
+		if s.turnBackoffUntil.CompareAndSwap(current, value) {
+			return
+		}
+	}
 }

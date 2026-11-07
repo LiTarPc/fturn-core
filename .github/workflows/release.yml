@@ -34,6 +34,9 @@ jobs:
       - name: Run TURN dependency regression tests with race detector
         run: go -C third_party/turn test -race -count=1 ./...
 
+      - name: Run smux regression tests with race detector
+        run: go -C third_party/smux test -race -count=1 ./...
+
       - name: Vet
         run: go vet ./...
 

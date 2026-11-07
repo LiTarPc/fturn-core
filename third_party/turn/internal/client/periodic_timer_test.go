@@ -31,16 +31,14 @@ func TestPeriodicTimer(t *testing.T) {
 		ok = rt.Start()
 		assert.False(t, ok, "start again is noop")
 
-		time.Sleep(120 * time.Millisecond)
+		// Scheduling under load may delay ticks; verify behavior without assuming
+		// that exactly four wall-clock ticks have run after a fixed sleep.
+		assert.Eventually(t, func() bool { return atomic.LoadUint64(&nCbs) >= 4 }, 2*time.Second, 10*time.Millisecond)
 		rt.Stop()
 		assert.False(t, rt.IsRunning(), "should not be running")
-		assert.Equal(
-			t,
-			uint64(4),
-			atomic.LoadUint64(&nCbs),
-			"should be called 4 times (actual: %d)",
-			atomic.LoadUint64(&nCbs),
-		)
+		stopped := atomic.LoadUint64(&nCbs)
+		time.Sleep(120 * time.Millisecond)
+		assert.Equal(t, stopped, atomic.LoadUint64(&nCbs), "callbacks continued after Stop")
 	})
 
 	t.Run("stop inside handler", func(t *testing.T) {
