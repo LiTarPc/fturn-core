@@ -157,3 +157,72 @@ func TestAdvancedFreshAuthorizationNotification(t *testing.T) {
 		t.Fatalf("fresh/cache notifications: %+v", gate)
 	}
 }
+
+func TestAdvancedAndIPCTokenRejectionDoesNotCycleIdentity(t *testing.T) {
+	const challenge = `{"error":{"error_code":14,"error_msg":"Captcha needed","redirect_uri":"https://id.vk.ru/captcha?session_token=PRIVATE_FRESH"}}`
+	for _, tc := range []struct {
+		name                                                            string
+		advanced, manual, browser, rejectManual, repeatBrowser, timeout bool
+		wantRequests                                                    int
+		wantPause                                                       bool
+	}{
+		{name: "advanced API rejection fresh manual succeeds", advanced: true, wantRequests: 4},
+		{name: "advanced manual API rejection pauses", advanced: true, rejectManual: true, wantRequests: 4, wantPause: true},
+		{name: "IPC manual-only rejection pauses", manual: true, rejectManual: true, wantRequests: 2, wantPause: true},
+		{name: "IPC browser token rejection pauses", browser: true, rejectManual: true, wantRequests: 2, wantPause: true},
+		{name: "IPC browser repeated challenge pauses", browser: true, repeatBrowser: true, wantRequests: 2, wantPause: true},
+		{name: "IPC browser timeout pauses", browser: true, timeout: true, wantRequests: 1, wantPause: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gate := &fixtureAuthControl{}
+			c := New(Config{AdvancedCaptcha: tc.advanced, ManualOnly: tc.manual, AuthControl: gate})
+			original := c.currentPersona()
+			auto, manual, calls := 0, 0, 0
+			c.autoSolver = func(context.Context, *captcha.Error, int, tlsclient.HttpClient, browserprofile.Profile) (string, error) {
+				auto++
+				return "PRIVATE_AUTO", nil
+			}
+			solve := func(context.Context, *captcha.Error, net.Dialer, browserprofile.Profile) (string, error) {
+				manual++
+				if tc.timeout {
+					return "", context.DeadlineExceeded
+				}
+				return "PRIVATE_MANUAL", nil
+			}
+			c.manualSolve = solve
+			if tc.browser {
+				c.browserSolve = solve
+			}
+			client := &authResponseClient{respond: func(r *fhttp.Request) *fhttp.Response {
+				calls++
+				if calls > tc.wantRequests {
+					t.Fatal("unexpected request after rejection")
+				}
+				b, _ := io.ReadAll(r.Body)
+				form, _ := url.ParseQuery(string(b))
+				answer := form.Get("success_token")
+				if answer == "" {
+					return authTestResponse(200, challenge)
+				}
+				if tc.repeatBrowser {
+					return authTestResponse(200, challenge)
+				}
+				if answer == "PRIVATE_AUTO" || tc.rejectManual {
+					return authTestResponse(200, `{"error":{"error_code":5,"error_msg":"Rejected answer"}}`)
+				}
+				return authTestResponse(200, `{"response":{"token":"PRIVATE_CALL"}}`)
+			}}
+			token, err := c.fetchCallToken(context.Background(), client, original, 1, "fixture", "name", "PRIVATE_ACCESS", VKCredentials{ClientID: "fixed"})
+			if tc.wantPause {
+				if !errors.Is(err, ErrCaptchaWaitRequired) || gate.paused != 1 {
+					t.Fatalf("expected explicit pause: %v", err)
+				}
+			} else if err != nil || token != "PRIVATE_CALL" {
+				t.Fatalf("fresh manual failed: %v", err)
+			}
+			if calls != tc.wantRequests || auto > 1 || manual != 1 || c.currentPersona().VisitorID != original.VisitorID {
+				t.Fatalf("requests=%d auto=%d manual=%d", calls, auto, manual)
+			}
+		})
+	}
+}

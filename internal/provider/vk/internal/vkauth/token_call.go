@@ -49,6 +49,9 @@ func (c *Client) fetchCallToken(
 			if captchaSubmitted {
 				c.log.Warnf("[STREAM %d] [Captcha] event=CAPTCHA_SUBMIT_RESULT outcome=request_failed error=%v", streamID, err)
 			}
+			if captchaSubmitted && (c.advancedCaptcha || c.authControl != nil) && ctx.Err() == nil && !errors.Is(err, captcha.ErrRateLimited) && !errors.Is(err, captcha.ErrUnavailable) {
+				return "", c.pauseForUser()
+			}
 			return "", err
 		}
 
@@ -62,6 +65,9 @@ func (c *Client) fetchCallToken(
 				c.log.Warnf("[STREAM %d] [Captcha] event=CAPTCHA_SUBMIT_RESULT outcome=%s response=%s", streamID, outcome, captcha.SafeResponse(resp))
 			}
 			if captchaErr != nil && captchaErr.IsCaptcha() {
+				if captchaSubmitted && c.browserSolve != nil && !c.advancedCaptcha {
+					return "", c.pauseForUser()
+				}
 				if c.advancedCaptcha && captchaSubmitted && c.captchaAttempt == 1 && !freshManual {
 					freshManual = true
 					captchaSubmitted = false
@@ -89,6 +95,15 @@ func (c *Client) fetchCallToken(
 				c.log.Errorf("[STREAM %d] [Messenger Auth] terminal link error: %v", streamID, termErr)
 				return "", termErr
 			}
+			if captchaSubmitted && (c.advancedCaptcha || c.authControl != nil) {
+				if c.advancedCaptcha && c.captchaAttempt == 1 && !freshManual {
+					freshManual = true
+					captchaSubmitted = false
+					data = originalData
+					continue
+				}
+				return "", c.pauseForUser()
+			}
 			return "", fmt.Errorf("messenger API error: response=%s", captcha.SafeResponse(errObj))
 		}
 
@@ -97,12 +112,18 @@ func (c *Client) fetchCallToken(
 			if captchaSubmitted {
 				c.log.Warnf("[STREAM %d] [Captcha] event=CAPTCHA_SUBMIT_RESULT outcome=invalid_response response=%s", streamID, captcha.SafeResponse(resp))
 			}
+			if captchaSubmitted && (c.advancedCaptcha || c.authControl != nil) {
+				return "", c.pauseForUser()
+			}
 			return "", fmt.Errorf("unexpected getAnonymousToken response: response=%s", captcha.SafeResponse(resp))
 		}
 		token2, ok := respMap["token"].(string)
 		if !ok || token2 == "" {
 			if captchaSubmitted {
 				c.log.Warnf("[STREAM %d] [Captcha] event=CAPTCHA_SUBMIT_RESULT outcome=invalid_response response=%s", streamID, captcha.SafeResponse(resp))
+			}
+			if captchaSubmitted && (c.advancedCaptcha || c.authControl != nil) {
+				return "", c.pauseForUser()
 			}
 			return "", fmt.Errorf("missing token in response: response=%s", captcha.SafeResponse(resp))
 		}
@@ -158,7 +179,7 @@ func (c *Client) solveCaptcha(
 
 	solveMode, hasSolveMode := CaptchaSolveModeForAttempt(attempt, c.manualOnly)
 	if !hasSolveMode {
-		if c.advancedCaptcha {
+		if c.advancedCaptcha || c.authControl != nil {
 			return "", c.pauseForUser()
 		}
 		c.log.Warnf("[STREAM %d] [Captcha] No more solve modes available (attempt %d)", streamID, attempt+1)
@@ -286,11 +307,11 @@ func (c *Client) solveCaptcha(
 		return "", c.pauseAuth(streamID, kind, solveErr)
 	}
 
-	if solveErr != nil && c.advancedCaptcha {
+	if solveErr != nil && (c.advancedCaptcha || (c.authControl != nil && (solveMode == CaptchaSolveModeManual || c.browserSolve != nil))) {
 		if errors.Is(solveErr, captcha.ErrBot) {
 			automaticChecksDisabled.Store(true)
 		}
-		if solveMode == CaptchaSolveModeAuto {
+		if c.advancedCaptcha && solveMode == CaptchaSolveModeAuto {
 			return "", errFreshManualChallenge
 		}
 		return "", c.pauseForUser()

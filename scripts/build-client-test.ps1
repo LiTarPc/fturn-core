@@ -1,6 +1,6 @@
 param(
     [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.+-]+$')]
-    [string]$Version = '4.2.4-test.2',
+    [string]$Version = '4.2.4-test.3',
     [string]$GoExe = 'go',
     [switch]$SkipAndroid
 )
