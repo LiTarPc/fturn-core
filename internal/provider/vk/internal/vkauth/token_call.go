@@ -218,7 +218,7 @@ func (c *Client) solveCaptcha(
 		if captchaErr.SessionToken != "" && captchaErr.RedirectURI != "" {
 			successToken, solveErr = solveFn(ctx, captchaErr, streamID, httpClient, profile)
 			if solveErr != nil {
-				c.log.Warnf("[STREAM %d] [Captcha] Auto captcha failed: %v", streamID, solveErr)
+				c.log.Warnf("[STREAM %d] [Captcha] Auto captcha failed: %v", streamID, captcha.SafeError(solveErr))
 			}
 		} else {
 			solveErr = fmt.Errorf("missing fields for auto solve")
@@ -248,12 +248,12 @@ func (c *Client) solveCaptcha(
 			solveErr = res.err
 			if successToken != "" {
 				if solveErr != nil {
-					c.log.Debugf("[STREAM %d] [Captcha] Token received (ignoring cleanup error: %v)", streamID, solveErr)
+					c.log.Debugf("[STREAM %d] [Captcha] Token received (ignoring cleanup error: %v)", streamID, captcha.SafeError(solveErr))
 					solveErr = nil
 				}
 				c.log.Infof("[STREAM %d] [Captcha] Got token from browser", streamID)
 			} else if solveErr != nil {
-				c.log.Warnf("[STREAM %d] [Captcha] Manual solver error: %v", streamID, solveErr)
+				c.log.Warnf("[STREAM %d] [Captcha] Manual solver error: %v", streamID, captcha.SafeError(solveErr))
 			}
 		case <-manualCtx.Done():
 			if errors.Is(manualCtx.Err(), context.DeadlineExceeded) {
@@ -273,7 +273,7 @@ func (c *Client) solveCaptcha(
 	}
 
 	if solveErr != nil && ctx.Err() != nil {
-		c.log.Warnf("[STREAM %d] [Captcha] solve interrupted by shutdown: %v", streamID, solveErr)
+		c.log.Warnf("[STREAM %d] [Captcha] solve interrupted by shutdown: %v", streamID, captcha.SafeError(solveErr))
 		return "", solveErr
 	}
 
@@ -297,7 +297,7 @@ func (c *Client) solveCaptcha(
 	}
 	if solveErr != nil {
 		c.log.Warnf("[STREAM %d] [Captcha] %s failed (attempt %d): %v",
-			streamID, CaptchaSolveModeLabel(solveMode), attempt+1, solveErr)
+			streamID, CaptchaSolveModeLabel(solveMode), attempt+1, captcha.SafeError(solveErr))
 		nextSolveMode, hasNextSolveMode := CaptchaSolveModeForAttempt(attempt+1, c.manualOnly)
 		if hasNextSolveMode {
 			c.log.Infof("[STREAM %d] [Captcha] Falling back to %s with a new persona",

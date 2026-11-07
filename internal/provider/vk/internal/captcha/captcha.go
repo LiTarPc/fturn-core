@@ -432,7 +432,7 @@ func (s *captchaSession) fetchCaptchaHTML(redirectURI string) (string, error) {
 	})
 	if err != nil {
 		if status == 429 {
-			return "", fmt.Errorf("%w: %w", ErrUnavailable, err)
+			return "", fmt.Errorf("%w: %w", ErrUnavailable, SafeError(err))
 		}
 		return "", err
 	}
@@ -739,8 +739,8 @@ func (s *captchaSession) doRawStatus(
 	start := time.Now()
 	resp, err := s.client.Do(req)
 	if err != nil {
-		s.logger().Debugf("[Captcha] http %s %s failed t=%s after=%s %s form=%s err=%v", method, SafeURL(endpoint), s.elapsed(), time.Since(start).Truncate(time.Millisecond), navSummary(req), captchaFormSummary(form), err)
-		return nil, 0, fmt.Errorf("%w: %w", ErrUnavailable, err)
+		s.logger().Debugf("[Captcha] http %s %s failed t=%s after=%s %s form=%s err=%v", method, SafeURL(endpoint), s.elapsed(), time.Since(start).Truncate(time.Millisecond), navSummary(req), captchaFormSummary(form), SafeError(err))
+		return nil, 0, fmt.Errorf("%w: %w", ErrUnavailable, SafeError(err))
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
