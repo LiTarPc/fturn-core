@@ -30,6 +30,8 @@ var errPairRecycled = errors.New("udprelay: stream pair recycled")
 type streamPair struct {
 	pipe   net.PacketConn
 	cancel context.CancelFunc
+	ready  chan struct{}
+	result <-chan error
 }
 
 // DTLSLoop поддерживает и перезапускает DTLS-соединение для указанного streamID.
@@ -53,10 +55,15 @@ func DTLSLoop(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr
 				continue
 			}
 			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				delay := time.Duration(10+randx.Intn(20)) * time.Second
+				deps.log().Warnf("[STREAM %d] DTLS cycle ended: cause=%v retry_in=%s", streamID, err, delay)
 				select {
 				case <-ctx.Done():
 					return
-				case <-time.After(time.Duration(10+randx.Intn(20)) * time.Second):
+				case <-time.After(delay):
 				}
 			}
 		}
@@ -76,8 +83,20 @@ func TURNLoop(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr
 			pair.cancel()
 			return
 		}
-		err := oneTURN(ctx, deps, params, peer, pair.pipe, streamID)
+		err := oneTURN(ctx, deps, params, peer, pair, streamID)
 		pair.cancel()
+		// DTLS closes its PacketConn before Dial returns its typed handshake
+		// error. Keep that primary cause instead of the secondary pipe EOF.
+		if errors.Is(err, net.ErrClosed) && pair.result != nil {
+			select {
+			case primary := <-pair.result:
+				if primary != nil && !errors.Is(primary, context.Canceled) {
+					err = fmt.Errorf("DTLS session: %w", primary)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
 		if ctx.Err() != nil {
 			return
 		}
@@ -98,7 +117,11 @@ func TURNLoop(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr
 				delay = max(time.Until(time.Unix(until, 0)), 5*time.Second)
 			}
 		}
-		deps.log().Warnf("[STREAM %d] UDP TURN cycle ended: cause=%v retry_in=%s", streamID, err, delay)
+		transport := "tcp"
+		if params.TransportUDP {
+			transport = "udp"
+		}
+		deps.log().Warnf("[STREAM %d] UDP TURN cycle ended: relay_mode=udp turn_transport=%s cause=%v retry_in=%s", streamID, transport, err, delay)
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
@@ -121,13 +144,16 @@ func oneDTLS(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr,
 	return err
 }
 
-func dtlsSession(dtlsctx context.Context, dtlscancel context.CancelFunc, deps *Deps, params *Params, peer *net.UDPAddr, listenConn net.PacketConn, inboundChan <-chan *Packet, connchan chan<- streamPair, okchan chan<- struct{}, streamID int) error {
+func dtlsSession(dtlsctx context.Context, dtlscancel context.CancelFunc, deps *Deps, params *Params, peer *net.UDPAddr, listenConn net.PacketConn, inboundChan <-chan *Packet, connchan chan<- streamPair, okchan chan<- struct{}, streamID int) (err error) {
 	select {
 	case <-time.After(time.Duration(randx.Intn(400)+100) * time.Millisecond):
 	case <-dtlsctx.Done():
 		return dtlsctx.Err()
 	}
 
+	ready := make(chan struct{})
+	result := make(chan error, 1)
+	defer func() { result <- err }()
 	conn1, conn2 := netconn.PacketPipe(limits.Datagram, 256)
 	stopPipe := context.AfterFunc(dtlsctx, func() { _ = conn1.Close(); _ = conn2.Close() })
 	defer stopPipe()
@@ -136,7 +162,14 @@ func dtlsSession(dtlsctx context.Context, dtlscancel context.CancelFunc, deps *D
 	// Ровно один раз: пара строго 1:1, иначе следующая аллокация села бы на DTLS, который
 	// уже сворачивают. Отдаём до handshake - его пакеты идут через эту же аллокацию.
 	select {
-	case connchan <- streamPair{pipe: conn2, cancel: dtlscancel}:
+	case connchan <- streamPair{pipe: conn2, cancel: dtlscancel, ready: ready, result: result}:
+	case <-dtlsctx.Done():
+		return dtlsctx.Err()
+	}
+	// Authorization and Allocate have their own cancellation/budgets. They
+	// must finish before a DTLS semaphore slot or handshake budget is used.
+	select {
+	case <-ready:
 	case <-dtlsctx.Done():
 		return dtlsctx.Err()
 	}
@@ -217,7 +250,8 @@ func dtlsSession(dtlsctx context.Context, dtlscancel context.CancelFunc, deps *D
 
 // oneTURN owns all forwarding goroutines until they have stopped and the
 // allocation has received a bounded deletion attempt.
-func oneTURN(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr, pipe net.PacketConn, streamID int) (err error) {
+func oneTURN(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr, pair streamPair, streamID int) (err error) {
+	pipe := pair.pipe
 	stream, err := DialTURN(ctx, params.Host, params.Port, params.TransportUDP, peer, streamID, params.GetCreds, deps.log())
 	if err != nil {
 		if deps.auth().IsAuthError(err) {
@@ -350,6 +384,7 @@ func oneTURN(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr,
 			}
 		}
 	})
+	close(pair.ready)
 	wg.Wait()
 	return context.Cause(turnCtx)
 }
