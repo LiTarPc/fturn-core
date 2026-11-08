@@ -5,6 +5,7 @@ package tcprelay
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -27,8 +28,9 @@ import (
 // These INFO messages are consumed by existing Windows and Android wrappers.
 type clientLogRecorder struct {
 	logx.Logger
-	mu    sync.Mutex
-	lines []string
+	mu     sync.Mutex
+	lines  []string
+	causes []error
 }
 
 func (l *clientLogRecorder) Infof(format string, args ...any) {
@@ -36,7 +38,26 @@ func (l *clientLogRecorder) Infof(format string, args ...any) {
 	defer l.mu.Unlock()
 	l.lines = append(l.lines, fmt.Sprintf(format, args...))
 }
-func (l *clientLogRecorder) Warnf(format string, args ...any) { l.Infof(format, args...) }
+func (l *clientLogRecorder) Warnf(format string, args ...any) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.lines = append(l.lines, fmt.Sprintf(format, args...))
+	for _, arg := range args {
+		if cause, ok := arg.(error); ok {
+			l.causes = append(l.causes, cause)
+		}
+	}
+}
+func (l *clientLogRecorder) hasCause(want error) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, cause := range l.causes {
+		if errors.Is(cause, want) {
+			return true
+		}
+	}
+	return false
+}
 
 func (l *clientLogRecorder) contains(text string) bool {
 	l.mu.Lock()
@@ -389,6 +410,9 @@ func TestUDPHandshakeFailureKeepsPrimaryCause(t *testing.T) {
 	if active.Load() != 0 {
 		t.Fatal("failed handshake reported ready")
 	}
+	if !logger.hasCause(context.DeadlineExceeded) {
+		t.Fatal("typed primary deadline cause was lost")
+	}
 	if !logger.contains("relay_mode=udp turn_transport=tcp") {
 		t.Fatal("relay mode and TURN transport are ambiguous")
 	}
@@ -445,9 +469,9 @@ func TestUDPDelayedCredentialGroupsKeepHandshakeSlotsFree(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	if active.Load() != 6 {
-		t.Fatalf("first credential group was blocked by pending authorization: ready=%d", active.Load())
-	}
+	// Allocate pacing and host scheduling are independent of this assertion.
+	// Keep group two blocked while giving group one time to finish its setup.
+	eventually(t, 3*time.Second, "first credential group ready while group two remains blocked", func() bool { return active.Load() == 6 })
 	if len(sem) != 0 {
 		t.Fatal("pending credential group consumed handshake slots")
 	}
