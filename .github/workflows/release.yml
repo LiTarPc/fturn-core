@@ -12,7 +12,6 @@ permissions:
 env:
   GO_VERSION: "1.26.10"
   GORELEASER_VERSION: v2.17.1
-  GOMOBILE_VERSION: latest
   TASK_VERSION: 3.52.0
 
 jobs:
@@ -41,7 +40,7 @@ jobs:
         run: go vet ./...
 
       - name: Run TURN/TCP integration test
-        run: go test -tags=integration -v -count=1 -timeout=3m ./internal/proxy/tcprelay
+        run: go test -race -tags=integration -v -count=1 -timeout=3m ./internal/proxy/tcprelay
 
   build-android:
     name: Build Android AAR
@@ -67,7 +66,7 @@ jobs:
 
       - name: Install gomobile
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@${{ env.GOMOBILE_VERSION }}
+          go install golang.org/x/mobile/cmd/gomobile golang.org/x/mobile/cmd/gobind
           gomobile init
 
       - name: Build AAR

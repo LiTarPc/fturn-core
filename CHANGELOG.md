@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.2.5 (2026-11-12)
+
+* Wait for TURN allocation and forwarding readiness before acquiring a DTLS handshake slot and starting its existing timeout. Preserve the primary typed DTLS failure instead of reporting only a closed internal pipe.
+* Improve client TCP half-close delivery, UDP queue bounds and oversized-packet handling, TURN allocation pacing/cooldowns, cancellation, deletion confirmation and connection readiness.
+* Add opt-in browser-computed CAPTCHA proof capture, validation and IPC v2. Manual-only settings take precedence; browser results, CAPTCHA acceptance and ready streams remain distinct states.
+* Bound automatic/manual CAPTCHA fallback, preserve rate/service cooldowns, pause rejected manual results for explicit resume and avoid identity/client-ID cycling. Redact secret-bearing network error URLs while preserving typed causes.
+* Preserve the mobile API and server wire protocol. Android hosts must support IPC v2 before enabling advanced browser capture; the standalone core keeps this mode disabled by default.
+* Add delayed-authorization, multi-group, typed-error and cancellation regressions. The test.4 native suites passed 11/11 tests on Honor; controlled long-duration live acceptance is not claimed by this release note.
+* Build gomobile and gobind from the project's pinned dependencies in CI and release builds.
+
+
 ## 4.2.3 (2026-10-22)
 
 * Build with Go 1.26.10 to include the crypto/x509 trust verification security fix (GO-2026-6809).
