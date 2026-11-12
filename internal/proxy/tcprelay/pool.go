@@ -111,13 +111,15 @@ func (p *sessionPool) Pick() *pooledSession {
 	if n == 0 {
 		return nil
 	}
-	for range n {
-		ps := p.sessions[(p.counter.Add(1)-1)%uint64(n)]
-		if !ps.sess.IsClosed() {
-			return ps
+	start := (p.counter.Add(1) - 1) % uint64(n)
+	var best *pooledSession
+	for offset := range n {
+		ps := p.sessions[(start+uint64(offset))%uint64(n)]
+		if !ps.sess.IsClosed() && (best == nil || ps.active.Load() < best.active.Load()) {
+			best = ps
 		}
 	}
-	return nil
+	return best
 }
 
 func (p *sessionPool) NextConnID() uint64 { return p.connID.Add(1) }

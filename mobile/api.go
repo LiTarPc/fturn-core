@@ -203,17 +203,27 @@ func SetDNSServers(servers string) {
 func stopLocked() {
 	l := current.Swap(nil)
 	if l == nil {
-		// Ожидание освобождения дескриптора сессией перед возможным Restart.
-		if prev := finishing.Swap(nil); prev != nil {
-			waitDone(prev.done, stopTimeout)
+		if previous := finishing.Load(); previous != nil {
+			waitDone(previous.done, stopTimeout)
+			select {
+			case <-previous.done:
+				finishing.CompareAndSwap(previous, nil)
+			default:
+			}
 		}
 		lastStop.Store(&final{state: StateIdle})
 		return
 	}
-	finishing.CompareAndSwap(l, nil)
+	finishing.Store(l)
 	l.cancel()
 	waitDone(l.done, stopTimeout)
 	closeTunnel(l.tunnel)
+	select {
+	case <-l.done:
+		finishing.CompareAndSwap(l, nil)
+	default:
+		coreLog().Warnf("Previous core session is still stopping; a new Start will wait for completion")
+	}
 	lastStop.Store(&final{state: StateIdle})
 }
 
@@ -246,6 +256,14 @@ func startLocked(configJSON string, tunFD int, withTunnel bool) error {
 		}
 	}()
 
+	if previous := finishing.Load(); previous != nil {
+		select {
+		case <-previous.done:
+			finishing.CompareAndSwap(previous, nil)
+		default:
+			return errors.New("previous core session is still stopping")
+		}
+	}
 	raw := []byte(configJSON)
 
 	// Резолв подписки до парсинга даёт обязательный peer.
@@ -298,15 +316,29 @@ func startLocked(configJSON string, tunFD int, withTunnel bool) error {
 		)
 	}
 
+	capture := vk.ProxyPowCapture(nil, nil)
+	if powSink.Load() != nil {
+		capture = vk.ProxyPowCapture(func(uri string) { captchaActive.Store(true); emitBrowserPow(uri) }, func() { captchaActive.Store(false); emitBrowserPow("") })
+	}
+	var gate *vk.AuthGate
+	if cfg.VK.AdvancedCaptcha {
+		gate = vk.NewAuthGate()
+		activeAuthGate.Store(gate)
+		defer activeAuthGate.CompareAndSwap(gate, nil)
+	}
 	deps := session.Deps{
 		Logger:        logger,
 		Observer:      observer{},
 		Solver:        solver,
-		CaptchaActive: captchaActive.Load,
+		PowCapture:    capture,
+		CaptchaActive: func() bool { return captchaActive.Load() || (gate != nil && gate.Active()) },
 		Options: session.Options{
 			ConnectTimeout: connectTimeout,
 			Traffic:        true,
 		},
+	}
+	if gate != nil {
+		deps.AuthControl = gate
 	}
 	if parts != nil {
 		deps.LocalPipe = parts.relaySide
@@ -358,4 +390,13 @@ func startLocked(configJSON string, tunFD int, withTunnel bool) error {
 	}()
 
 	return nil
+}
+
+var activeAuthGate atomic.Pointer[vk.AuthGate]
+
+// ResumeCaptcha resumes a user-paused advanced authorization, if still active.
+func ResumeCaptcha() {
+	if gate := activeAuthGate.Load(); gate != nil {
+		gate.Resume()
+	}
 }

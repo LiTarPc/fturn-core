@@ -85,6 +85,8 @@ func (p *packetPipe) ReadFrom(b []byte) (int, net.Addr, error) {
 		select {
 		case <-p.done:
 			return 0, nil, net.ErrClosed
+		case <-p.peer.done:
+			return 0, nil, net.ErrClosed
 		case <-changed:
 			continue
 		case <-timeout:
@@ -93,6 +95,7 @@ func (p *packetPipe) ReadFrom(b []byte) (int, net.Addr, error) {
 			if !ok {
 				return 0, nil, net.ErrClosed
 			}
+
 			n := copy(b, *buf)
 			p.pool.Put(buf)
 			return n, p.remote, nil

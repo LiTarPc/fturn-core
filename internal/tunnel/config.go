@@ -6,6 +6,8 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+
+	"github.com/LiTarPc/fturn-core/internal/transport/limits"
 )
 
 // DefaultMTU - безопасный MTU для WireGuard поверх TURN без фрагментации.
@@ -135,6 +137,23 @@ func ValidateRange(s string) error {
 	}
 	if high < low {
 		return fmt.Errorf("upper bound %d below lower %d", high, low)
+	}
+	return nil
+}
+
+// ValidateRelay enforces the payload limit of existing TURN/DTLS relay servers.
+// Direct WG/AWG mode can use a different MTU and does not call this method.
+func (c *Config) ValidateRelay() error {
+	if c.MTU <= 0 || c.MTU > limits.TunnelMTU {
+		return fmt.Errorf("tunnel: relay MTU must be 1..%d", limits.TunnelMTU)
+	}
+	p := c.Amnezia
+	padded := (c.MTU + 15) &^ 15
+	if p.S4 > limits.UDPApplication-32-padded {
+		return fmt.Errorf("tunnel: MTU and AWG S4 exceed relay payload %d", limits.UDPApplication)
+	}
+	if p.Jmax > limits.UDPApplication || p.S1 > limits.UDPApplication-148 || p.S2 > limits.UDPApplication-92 || p.S3 > limits.UDPApplication-64 {
+		return fmt.Errorf("tunnel: AWG junk/padding exceeds relay payload %d", limits.UDPApplication)
 	}
 	return nil
 }

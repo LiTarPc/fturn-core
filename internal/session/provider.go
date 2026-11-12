@@ -20,17 +20,26 @@ func buildProvider(
 	solver vk.ManualSolverFunc,
 	logger logx.Logger,
 	total int,
+	extras ...providerExtra,
 ) (provider.Provider, error) {
 	switch cfg.Provider.Name {
 	case config.ProviderVK:
 		if len(cfg.VK.Links) == 0 {
 			return nil, fmt.Errorf("messenger: no links configured")
 		}
+		var extra providerExtra
+		if len(extras) > 0 {
+			extra = extras[0]
+		}
 		newVK := func(link string) (provider.Provider, error) {
 			return vk.New(vk.Config{
 				Link:            link,
 				Dialer:          dialer,
 				ManualOnly:      cfg.VK.ManualCaptcha,
+				AdvancedCaptcha: cfg.VK.AdvancedCaptcha,
+				PowCapture:      extra.capture,
+				AuthControl:     extra.auth,
+				BrowserSolver:   extra.browser,
 				Platform:        string(cfg.VK.Platform),
 				StreamsPerCache: cfg.VK.StreamsPerCred,
 				StreamsAlive:    connected.Load,
@@ -56,4 +65,10 @@ func buildProvider(
 	default:
 		return nil, fmt.Errorf("unknown provider %q", cfg.Provider.Name)
 	}
+}
+
+type providerExtra struct {
+	capture vk.PowCaptureFunc
+	auth    vk.AuthControl
+	browser vk.ManualSolverFunc
 }

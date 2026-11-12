@@ -119,6 +119,9 @@ func buildTunnel(cfg *config.Client, logger logx.Logger) (*tunnelParts, *tunnel.
 		logger.Warnf("tunnel: mode=wg, параметры AmneziaWG из конфига игнорируются")
 		tunCfg.Amnezia = tunnel.AmneziaParams{}
 	}
+	if err := tunCfg.ValidateRelay(); err != nil {
+		return nil, nil, err
+	}
 	for i := range tunCfg.Peers {
 		tunCfg.Peers[i].Endpoint = ""
 	}

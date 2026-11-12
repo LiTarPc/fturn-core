@@ -49,9 +49,20 @@ type AutoSolveFunc func(
 	profile browserprofile.Profile,
 ) (token string, err error)
 
+// PowCaptureFunc returns a browser-computed envelope, never a success token.
+type PowCaptureFunc func(context.Context, string, net.Dialer, browserprofile.Profile) (string, error)
+
 type ManualSolveFunc func(
 	ctx context.Context,
 	captchaErr *captcha.Error,
 	dialer net.Dialer,
 	profile browserprofile.Profile,
 ) (token string, err error)
+
+// AuthControl gates fresh authorization across credential groups.
+type AuthControl interface {
+	Acquire(context.Context) error
+	Release()
+	Pause()
+	Authorized()
+}

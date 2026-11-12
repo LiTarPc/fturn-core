@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/LiTarPc/fturn-core/internal/captchaipc"
 	"github.com/LiTarPc/fturn-core/internal/clientid"
 	"github.com/LiTarPc/fturn-core/internal/config"
 	"github.com/LiTarPc/fturn-core/internal/logx"
@@ -100,10 +101,40 @@ func main() {
 		os.Exit(1)
 	}()
 
-	sess, err := session.New(cfg, session.Deps{
-		Logger: logger,
-		Solver: vk.DefaultManualSolver,
-	})
+	deps := session.Deps{Logger: logger, Solver: vk.DefaultManualSolver}
+	for _, prefix := range []string{"FREETURN_", "FREETURN_TURN_", "FREETURN_RAW_"} {
+		if os.Getenv(prefix+"ADVANCED_CAPTCHA") == "1" {
+			cfg.VK.AdvancedCaptcha = true
+		}
+	}
+	host, err := captchaipc.FromEnvironment(ctx)
+	if err != nil {
+		logger.Errorf("captcha IPC: %v", err)
+		os.Exit(1)
+	}
+	if host == nil && cfg.VK.AdvancedCaptcha {
+		gate := vk.NewAuthGate()
+		deps.AuthControl = gate
+		deps.CaptchaActive = gate.Active
+	}
+	if host != nil {
+		defer func() { _ = host.Close() }()
+		if cfg.VK.AdvancedCaptcha && !cfg.VK.ManualCaptcha && host.Protocol() != 2 {
+			logger.Errorf("advanced captcha requires IPC protocol 2")
+			_ = host.Close()
+			os.Exit(1)
+		}
+		deps.AuthControl = host
+		deps.CaptchaActive = host.Active
+		deps.Solver = vk.IPCManualSolver(host, "manual")
+		deps.PowCapture = vk.IPCPowCapture(host)
+		for _, prefix := range []string{"FREETURN_", "FREETURN_TURN_", "FREETURN_RAW_"} {
+			if os.Getenv(prefix+"BROWSER_CAPTCHA") == "1" && !cfg.VK.AdvancedCaptcha && !cfg.VK.ManualCaptcha {
+				deps.BrowserSolver = vk.IPCManualSolver(host, "browser")
+			}
+		}
+	}
+	sess, err := session.New(cfg, deps)
 	if err != nil {
 		logger.Errorf("%v", err)
 		os.Exit(1)

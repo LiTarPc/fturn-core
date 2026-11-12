@@ -83,3 +83,22 @@ func (l *sinkLogger) Infof(format string, v ...any)  { l.write(LevelInfo, format
 func (l *sinkLogger) Warnf(format string, v ...any)  { l.write(LevelWarn, format, v...) }
 func (l *sinkLogger) Errorf(format string, v ...any) { l.write(LevelError, format, v...) }
 func (l *sinkLogger) DebugEnabled() bool             { return l.debug }
+
+// BrowserPowSink is optional and does not change the existing EventSink ABI.
+// A non-empty URL requests PoW capture only; an empty URL closes that page.
+type BrowserPowSink interface{ OnBrowserPow(url string) }
+
+var powSink atomic.Pointer[BrowserPowSink]
+
+func SetBrowserPowSink(s BrowserPowSink) {
+	if s == nil {
+		powSink.Store(nil)
+	} else {
+		powSink.Store(&s)
+	}
+}
+func emitBrowserPow(uri string) {
+	if p := powSink.Load(); p != nil {
+		(*p).OnBrowserPow(uri)
+	}
+}

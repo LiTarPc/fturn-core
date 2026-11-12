@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/LiTarPc/fturn-core/internal/transport/kcpmux"
+	"github.com/LiTarPc/fturn-core/internal/transport/limits"
 	"github.com/LiTarPc/fturn-core/internal/tunnel"
 )
 
@@ -91,8 +92,8 @@ func validateTunnel(t TunnelOpts, mode ProxyMode) error {
 	if strings.TrimSpace(t.Config) == "" {
 		return errors.New("tunnel config is required")
 	}
-	if t.MTU <= 0 {
-		return errors.New("tunnel MTU must be positive")
+	if t.MTU <= 0 || t.MTU > limits.TunnelMTU {
+		return fmt.Errorf("tunnel MTU must be 1..%d for TURN relay", limits.TunnelMTU)
 	}
 	return nil
 }

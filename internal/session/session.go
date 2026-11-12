@@ -90,9 +90,12 @@ func (o Options) withDefaults() Options {
 }
 
 type Deps struct {
+	AuthControl   vk.AuthControl
 	Logger        logx.Logger
 	Observer      Observer
 	Solver        vk.ManualSolverFunc
+	PowCapture    vk.PowCaptureFunc
+	BrowserSolver vk.ManualSolverFunc
 	CaptchaActive func() bool
 	// LocalPipe подменяет локальный UDP-сокет прямым каналом в памяти.
 	LocalPipe net.PacketConn
@@ -120,11 +123,12 @@ type statusInfo struct {
 
 // Session инкапсулирует состояние и управление клиентской сессией.
 type Session struct {
-	cfg     *config.Client
-	deps    Deps
-	opts    Options
-	total   int
-	traffic *traffic
+	turnBackoffUntil atomic.Int64
+	cfg              *config.Client
+	deps             Deps
+	opts             Options
+	total            int
+	traffic          *traffic
 
 	connected   atomic.Int32
 	status      atomic.Pointer[statusInfo]
@@ -183,7 +187,7 @@ func (s *Session) Run(ctx context.Context) (err error) {
 	appDialer := dnsdial.AppDialer(s.cfg.DNS.Mode)
 	dnsdial.InstallGlobalResolver(s.cfg.DNS.Mode)
 
-	prov, err := buildProvider(s.cfg, appDialer, &s.connected, s.deps.Solver, log, s.total)
+	prov, err := buildProvider(s.cfg, appDialer, &s.connected, s.deps.Solver, log, s.total, providerExtra{capture: s.deps.PowCapture, auth: s.deps.AuthControl, browser: s.deps.BrowserSolver})
 	if err != nil {
 		return fmt.Errorf("provider init: %w", err)
 	}
@@ -220,7 +224,7 @@ func (s *Session) Run(ctx context.Context) (err error) {
 
 	var watchdogErr error
 	bg.Go(guard(func() {
-		watchdogErr = s.watch(runCtx, cancel, prov.BackoffUntilUnix)
+		watchdogErr = s.watch(runCtx, cancel, func() int64 { return max(prov.BackoffUntilUnix(), s.turnBackoffUntil.Load()) })
 	}))
 
 	relayErr := s.runRelayLoop(runCtx, prov, peer)
@@ -464,6 +468,7 @@ func (s *Session) relayUDP(ctx context.Context, prov provider.Provider, getCreds
 		GetCreds:     getCreds,
 		ClientID:     s.cfg.ClientID,
 		TrafficStats: s.trafficStats(),
+		OnBackoff:    s.noteTURNBackoff,
 	}
 	return udprelay.Run(ctx, dialer, prov, log, &s.connected, routeCallback, params, peer, local, s.total)
 }
@@ -491,6 +496,7 @@ func (s *Session) relayTCP(ctx context.Context, prov provider.Provider, getCreds
 		KCPProfile:   s.cfg.KCP.Profile,
 		ClientID:     s.cfg.ClientID,
 		TrafficStats: s.trafficStats(),
+		OnBackoff:    s.noteTURNBackoff,
 	}
 	return tcprelay.Run(ctx, deps, params, peer, s.cfg.Proxy.Listen, s.total)
 }
@@ -512,4 +518,15 @@ func (s *Session) trafficStats() *stats.Stats {
 		return nil
 	}
 	return s.traffic.stats
+}
+
+// noteTURNBackoff prevents the startup deadline from cancelling a deliberate
+// allocation pause. It does not reset or kill healthy channels.
+func (s *Session) noteTURNBackoff(until time.Time) {
+	value := until.Unix()
+	for current := s.turnBackoffUntil.Load(); value > current; current = s.turnBackoffUntil.Load() {
+		if s.turnBackoffUntil.CompareAndSwap(current, value) {
+			return
+		}
+	}
 }

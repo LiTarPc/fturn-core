@@ -43,6 +43,7 @@ func defaultRaw() raw {
 		Mode:           DefaultMode,
 		ObfProfile:     string(DefaultObfProfile),
 		Platform:       string(DefaultPlatform),
+		AutoCaptcha:    true,
 		DNSMode:        DefaultDNSMode,
 		Routes:         false,
 		TunnelMode:     string(tunnel.ModeNone),

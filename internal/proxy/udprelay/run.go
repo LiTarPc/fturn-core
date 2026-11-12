@@ -37,6 +37,7 @@ type Params struct {
 	GetCreds     GetCredsFunc
 	ClientID     string
 	TrafficStats *stats.Stats
+	OnBackoff    func(time.Time)
 }
 
 const streamStartBarrier = 20 * time.Second
@@ -53,6 +54,20 @@ type Deps struct {
 	OnTURNServer     func(ip net.IP)
 	fatalCh          chan error
 	allocPace        *allocpace.Pacer
+}
+
+type nopAuth struct{}
+
+func (nopAuth) IsAuthError(error) bool   { return false }
+func (nopAuth) HandleAuthError(int) bool { return false }
+func (nopAuth) ResetErrors(int)          {}
+func (nopAuth) DropCredentials(int)      {}
+func (nopAuth) BackoffUntilUnix() int64  { return 0 }
+func (d *Deps) auth() AuthHandler {
+	if d.Auth == nil {
+		return nopAuth{}
+	}
+	return d.Auth
 }
 
 func (d *Deps) log() logx.Logger {
@@ -123,7 +138,9 @@ func Run(ctx context.Context, dtlsDialer *dtlsdial.Dialer, auth AuthHandler, log
 	inboundChan := make(chan *Packet, inboundQueueCap)
 	wg := sync.WaitGroup{}
 	wg.Go(deps.guard(func() {
-		runListener(runCtx, listenConn, &activeLocalPeer, inboundChan)
+		if err := runListener(runCtx, listenConn, &activeLocalPeer, inboundChan, logger); err != nil && runCtx.Err() == nil {
+			deps.fatal(err)
+		}
 	}))
 
 	// Стрим 1 стартует первым для прогрева кэша учетных данных.

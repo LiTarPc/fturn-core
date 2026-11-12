@@ -45,6 +45,7 @@ type UDPConn struct {
 	closeCh                chan struct{}     // Thread-safe
 	closeMutex             sync.Mutex        // Thread-safe
 	bindingRefreshInterval time.Duration     // Read-only
+	onChannelBind          func(error)
 	allocation
 }
 
@@ -55,19 +56,21 @@ func NewUDPConn(config *AllocationConfig) *UDPConn {
 		readCh:                 make(chan *inboundData, maxReadQueueSize),
 		closeCh:                make(chan struct{}),
 		bindingRefreshInterval: defaultBindingRefreshInterval,
+		onChannelBind:          config.OnChannelBind,
 		allocation: allocation{
-			client:      config.Client,
-			relayedAddr: config.RelayedAddr,
-			serverAddr:  config.ServerAddr,
-			readTimer:   time.NewTimer(time.Duration(math.MaxInt64)),
-			permMap:     newPermissionMap(),
-			username:    config.Username,
-			realm:       config.Realm,
-			integrity:   config.Integrity,
-			_nonce:      config.Nonce,
-			_lifetime:   config.Lifetime,
-			net:         config.Net,
-			log:         config.Log,
+			client:              config.Client,
+			relayedAddr:         config.RelayedAddr,
+			serverAddr:          config.ServerAddr,
+			readTimer:           time.NewTimer(time.Duration(math.MaxInt64)),
+			permMap:             newPermissionMap(),
+			username:            config.Username,
+			realm:               config.Realm,
+			integrity:           config.Integrity,
+			_nonce:              config.Nonce,
+			_lifetime:           config.Lifetime,
+			net:                 config.Net,
+			log:                 config.Log,
+			onAllocationRefresh: config.OnAllocationRefresh,
 		},
 	}
 
@@ -266,7 +269,13 @@ func (c *UDPConn) WriteTo(payload []byte, addr net.Addr) (int, error) { //nolint
 
 // Close closes the connection.
 // Any blocked ReadFrom or WriteTo operations will be unblocked and return errors.
-func (c *UDPConn) Close() error {
+func (c *UDPConn) Close() error { return c.close(false) }
+
+// CloseWithConfirmation waits for a Refresh success response with lifetime zero.
+// The owner must bound this call by closing the client/transport on cancellation.
+func (c *UDPConn) CloseWithConfirmation() error { return c.close(true) }
+
+func (c *UDPConn) close(confirm bool) error {
 	c.closeMutex.Lock()
 	defer c.closeMutex.Unlock()
 
@@ -283,7 +292,13 @@ func (c *UDPConn) Close() error {
 
 	c.client.OnDeallocated(c.relayedAddr)
 
-	return c.refreshAllocation(0, true /* dontWait=true */)
+	for range maxRetryAttempts {
+		err := c.refreshAllocation(0, !confirm)
+		if !errors.Is(err, errTryAgain) {
+			return err
+		}
+	}
+	return errTryAgain
 }
 
 // LocalAddr returns the local network address.
@@ -470,6 +485,11 @@ func (c *UDPConn) startBinding(bound *binding) (bindingState, bool) {
 
 func (c *UDPConn) bindChannel(bound *binding, startState bindingState) {
 	var err error
+	defer func() {
+		if c.onChannelBind != nil {
+			c.onChannelBind(err)
+		}
+	}()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		c.log.Debugf("ChannelBind attempt=%d peer=%s channel=%d state=%d last_success_age=%s", attempt, bound.addr, bound.number, startState, time.Since(bound.refreshedAt()))
 		if err = c.bind(bound); !errors.Is(err, errTryAgain) {

@@ -166,3 +166,23 @@ func diagnosticClip(value string, limit int) string {
 	}
 	return value[:limit] + "...<truncated>"
 }
+
+// SafeError redacts secret-bearing URLs while retaining errors.Is/errors.As.
+func SafeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var message string
+	if json.Unmarshal([]byte(SafeResponse(err.Error())), &message) != nil {
+		message = "request failed"
+	}
+	return &diagnosticError{cause: err, message: message}
+}
+
+type diagnosticError struct {
+	cause   error
+	message string
+}
+
+func (e *diagnosticError) Error() string { return e.message }
+func (e *diagnosticError) Unwrap() error { return e.cause }

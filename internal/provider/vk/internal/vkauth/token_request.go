@@ -19,7 +19,7 @@ import (
 func (c *Client) openJoinPage(ctx context.Context, httpClient tlsclient.HttpClient, profile browserprofile.Profile, link string) error {
 	req, err := fhttp.NewRequestWithContext(ctx, fhttp.MethodGet, "https://vk.ru/call/join/"+link, nil)
 	if err != nil {
-		return err
+		return captcha.SafeError(err)
 	}
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
 	req.Header.Set("Upgrade-Insecure-Requests", "1")
@@ -31,7 +31,7 @@ func (c *Client) openJoinPage(ctx context.Context, httpClient tlsclient.HttpClie
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return err
+		return captcha.SafeError(err)
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
@@ -39,13 +39,13 @@ func (c *Client) openJoinPage(ctx context.Context, httpClient tlsclient.HttpClie
 		}
 	}()
 	if err := captcha.ResponseError("join page", resp.StatusCode, resp.Header.Get("Retry-After"), nil); err != nil {
-		return err
+		return captcha.SafeError(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("join page HTTP %d", resp.StatusCode)
 	}
 	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
-		return err
+		return captcha.SafeError(err)
 	}
 	return nil
 }
@@ -53,13 +53,13 @@ func (c *Client) openJoinPage(ctx context.Context, httpClient tlsclient.HttpClie
 func (c *Client) doRequest(ctx context.Context, httpClient tlsclient.HttpClient, profile browserprofile.Profile, data, url string) (map[string]any, error) {
 	parsedURL, err := neturl.Parse(url)
 	if err != nil {
-		return nil, fmt.Errorf("parse request URL: %w", err)
+		return nil, fmt.Errorf("parse request URL: %w", captcha.SafeError(err))
 	}
 	domain := parsedURL.Hostname()
 
 	req, err := fhttp.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer([]byte(data)))
 	if err != nil {
-		return nil, err
+		return nil, captcha.SafeError(err)
 	}
 	req.Host = domain
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -73,7 +73,7 @@ func (c *Client) doRequest(ctx context.Context, httpClient tlsclient.HttpClient,
 
 	httpResp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, captcha.SafeError(err)
 	}
 	defer func() {
 		if closeErr := httpResp.Body.Close(); closeErr != nil {
@@ -91,17 +91,17 @@ func (c *Client) doRequest(ctx context.Context, httpClient tlsclient.HttpClient,
 	}
 	body, err := io.ReadAll(httpResp.Body)
 	if err != nil {
-		return nil, err
+		return nil, captcha.SafeError(err)
 	}
 	var resp map[string]any
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, err
+		return nil, captcha.SafeError(err)
 	}
 	c.log.Debugf("[VK Auth] response source=%s HTTP=%d response=%s", captcha.SafeURL(url), httpResp.StatusCode, captcha.SafeResponse(resp))
 	if err := captcha.ResponseError(captcha.SafeURL(url), httpResp.StatusCode, httpResp.Header.Get("Retry-After"), resp); err != nil {
 		// Leave business errors and challenges to the endpoint-specific parser.
 		if errors.Is(err, captcha.ErrUnavailable) || errors.Is(err, captcha.ErrRateLimited) {
-			return nil, err
+			return nil, captcha.SafeError(err)
 		}
 	}
 	return resp, nil

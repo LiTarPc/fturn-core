@@ -15,9 +15,13 @@ import (
 )
 
 type Config struct {
+	AuthControl     AuthControl
 	Link            string
 	Dialer          net.Dialer
 	ManualOnly      bool
+	AdvancedCaptcha bool
+	BrowserSolver   ManualSolverFunc
+	PowCapture      PowCaptureFunc
 	Platform        string
 	StreamsPerCache int
 	StreamsAlive    func() int32
@@ -30,6 +34,8 @@ type Config struct {
 
 // ManualSolverFunc определяет сигнатуру функции для интерактивного решения капчи.
 type ManualSolverFunc = vkauth.ManualSolveFunc
+type PowCaptureFunc = vkauth.PowCaptureFunc
+type AuthControl = vkauth.AuthControl
 
 type Provider struct {
 	link string
@@ -45,9 +51,13 @@ func New(cfg Config, solver ManualSolverFunc) (*Provider, error) {
 	manualcaptcha.SetLogger(cfg.Log)
 	manualcaptcha.Debug = cfg.Debug
 	auth := vkauth.New(vkauth.Config{
+		AuthControl:     cfg.AuthControl,
 		Credentials:     cfg.Credentials,
 		Dialer:          cfg.Dialer,
 		ManualOnly:      cfg.ManualOnly,
+		AdvancedCaptcha: cfg.AdvancedCaptcha,
+		PowCapture:      cfg.PowCapture,
+		BrowserSolver:   cfg.BrowserSolver,
 		Platform:        browserprofile.PlatformFromString(cfg.Platform),
 		StreamsPerCache: cfg.StreamsPerCache,
 		StreamsAlive:    cfg.StreamsAlive,

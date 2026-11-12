@@ -133,3 +133,49 @@ func TestOneDTLSSessionCancelIsNotRecycle(t *testing.T) {
 		t.Fatal("oneDTLS did not exit after ctx cancel")
 	}
 }
+
+func TestOneDTLSWaitsForTURNBeforeHandshakeSlot(t *testing.T) {
+	deps, listen := newPairDeps(t)
+	sem := make(chan struct{}, 1)
+	deps.DTLSDialer.HandshakeSem = sem
+	pairs := make(chan streamPair, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- oneDTLS(context.Background(), deps, &Params{}, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9}, listen, make(chan *Packet), pairs, nil, 1)
+	}()
+	var pair streamPair
+	select {
+	case pair = <-pairs:
+	case <-time.After(2 * time.Second):
+		t.Fatal("pair not published")
+	}
+	defer pair.cancel()
+	if pair.ready == nil || pair.result == nil {
+		t.Fatal("missing readiness/result handshake")
+	}
+	select {
+	case <-time.After(100 * time.Millisecond):
+	case err := <-done:
+		t.Fatalf("DTLS ended before allocation was ready: %v", err)
+	}
+	if len(sem) != 0 {
+		t.Fatal("credential wait occupied a handshake slot")
+	}
+	pair.cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, errPairRecycled) {
+			t.Fatalf("pair cancellation lost: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("waiting pair did not stop")
+	}
+	select {
+	case err := <-pair.result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("raw DTLS cause lost: %v", err)
+		}
+	default:
+		t.Fatal("missing DTLS result")
+	}
+}

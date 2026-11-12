@@ -21,6 +21,7 @@ import (
 	"github.com/LiTarPc/fturn-core/internal/stats"
 	"github.com/LiTarPc/fturn-core/internal/transport/dtlsdial"
 	"github.com/LiTarPc/fturn-core/internal/transport/kcpmux"
+	"github.com/LiTarPc/fturn-core/internal/transport/turndial"
 	"github.com/LiTarPc/fturn-core/internal/wire"
 	"github.com/LiTarPc/fturn-core/internal/wire/shape"
 	"github.com/xtaci/smux"
@@ -31,7 +32,6 @@ const (
 	setupRetryJitter     = 4 * time.Second
 	providerBackoffDelay = 60 * time.Second
 	reconnectDelay       = 2 * time.Second
-	sessionPollDelay     = time.Second
 	minAcceptBackoff     = 5 * time.Millisecond
 	maxAcceptBackoff     = time.Second
 )
@@ -56,6 +56,7 @@ type Params struct {
 	KCPProfile   kcpmux.Profile
 	ClientID     string
 	TrafficStats *stats.Stats
+	OnBackoff    func(time.Time)
 }
 
 type Deps struct {
@@ -125,16 +126,22 @@ func Run(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr, lis
 	for i := range numSessions {
 		id := i + 1
 		wgBG.Go(func() {
-			_ = safego.Run(log, func() { maintainSession(runCtx, deps, params, peer, id, pool, pacer, fatal) })
+			if err := safego.Run(log, func() { maintainSession(runCtx, deps, params, peer, id, pool, pacer, fatal) }); err != nil {
+				fatal(err)
+			}
 		})
 	}
 	if deps.Recycle != nil {
 		wgBG.Go(func() {
-			_ = safego.Run(log, func() { watchRecycle(runCtx, log, pool, deps.Recycle) })
+			if err := safego.Run(log, func() { watchRecycle(runCtx, log, pool, deps.Recycle) }); err != nil {
+				fatal(err)
+			}
 		})
 	}
 	wgBG.Go(func() {
-		_ = safego.Run(log, func() { announceReady(runCtx, log, pool, numSessions) })
+		if err := safego.Run(log, func() { announceReady(runCtx, log, pool, numSessions) }); err != nil {
+			fatal(err)
+		}
 	})
 
 	var fatalErr atomic.Pointer[error]
@@ -312,9 +319,11 @@ func proxyConn(ctx context.Context, log logx.Logger, conn net.Conn, pool *sessio
 
 // session - живой стек одной сессии; permDead закрывается при смерти TURN channel-bind.
 type session struct {
-	smux     *smux.Session
-	permDead <-chan struct{}
-	cleanup  func()
+	smux      *smux.Session
+	permDead  <-chan struct{}
+	cleanup   func()
+	turnError func() error
+	started   time.Time
 }
 
 func maintainSession(ctx context.Context, deps *Deps, params *Params, peer *net.UDPAddr, id int, pool *sessionPool, pacer *allocpace.Pacer, fatal func(error)) {
@@ -335,6 +344,9 @@ func maintainSession(ctx context.Context, deps *Deps, params *Params, peer *net.
 				auth.HandleAuthError(id)
 			}
 			d := retryDelay(auth, err)
+			if turndial.RetryAfter(err) > 0 && params.OnBackoff != nil {
+				params.OnBackoff(time.Now().Add(d))
+			}
 			log.Errorf("[session %d] setup error: %s, retry in %s", id, err, d.Truncate(time.Millisecond))
 			if !sleep(ctx, d) {
 				return
@@ -373,26 +385,37 @@ func retryDelay(auth AuthHandler, err error) time.Duration {
 		return providerBackoffDelay
 	}
 
+	if d := turndial.RetryAfter(err); d > 0 {
+		return d
+	}
 	return setupRetryDelay + time.Duration(randx.Intn(int(setupRetryJitter/time.Millisecond)))*time.Millisecond
 }
 
 // awaitDead: false - вышли по отмене ctx, а не по смерти сессии.
 func awaitDead(ctx context.Context, log logx.Logger, s *session, id int) bool {
-	t := time.NewTicker(sessionPollDelay)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return false
-		case <-s.permDead:
-			log.Warnf("[session %d] TURN receiver or renewal failed; recycling allocation", id)
-			return true
-		case <-t.C:
-			if s.smux.IsClosed() {
-				return true
-			}
-		}
+	if ctx.Err() != nil {
+		return false
 	}
+	var cause error
+	select {
+	case <-ctx.Done():
+		return false
+	case <-s.permDead:
+		cause = errors.New("TURN receiver or renewal failed")
+		if s.turnError != nil && s.turnError() != nil {
+			cause = s.turnError()
+		}
+	case <-s.smux.ErrorChan():
+		cause = s.smux.Err()
+	case <-s.smux.CloseChan():
+		cause = s.smux.Err()
+	}
+	age := time.Duration(0)
+	if !s.started.IsZero() {
+		age = time.Since(s.started).Round(time.Millisecond)
+	}
+	log.Warnf("[session %d] Transport ended: age=%s cause=%v", id, age, cause)
+	return true
 }
 
 // createSession поднимает стек TURN -> obf -> DTLS -> KCP -> smux.
@@ -414,14 +437,10 @@ func createSession(ctx context.Context, deps *Deps, params *Params, peer *net.UD
 	}
 	relayedAddr := stream.Relay.LocalAddr().String()
 	closers = append(closers, func() {
-		// Недошедший deallocate держит квоту мессенджер до конца её lifetime, и следующий
-		// Allocate по тем же кредам ловит 486 - такие креды переиспользовать нельзя.
-		cerr := stream.Close()
-		log.Infof("[session %d] TURN allocation released: relayed=%s deallocate=%v", id, relayedAddr, cerr)
-		if cerr != nil {
-			deps.auth().DropCredentials(id)
-		}
+		closeErr := stream.Close()
+		log.Infof("[session %d] TURN closed: relayed=%s delete_status=%s delete_error=%v", id, relayedAddr, stream.DeletionStatus(), closeErr)
 	})
+
 	if deps.OnTURNServer != nil {
 		deps.OnTURNServer(stream.ServerUDPAddr.IP)
 	}
@@ -469,7 +488,7 @@ func createSession(ctx context.Context, deps *Deps, params *Params, peer *net.UD
 	closers = append(closers, func() { _ = smuxSess.Close() })
 	log.Debugf("[session %d] smux session established", id)
 
-	return &session{smux: smuxSess, permDead: stream.PermDead, cleanup: cleanup}, nil
+	return &session{smux: smuxSess, permDead: stream.PermDead, cleanup: cleanup, turnError: stream.Err, started: time.Now()}, nil
 }
 
 func sleep(ctx context.Context, d time.Duration) bool {
