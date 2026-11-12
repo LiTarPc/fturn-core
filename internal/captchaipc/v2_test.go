@@ -92,6 +92,12 @@ func TestV2CaptureTTLAndSeparateManual(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("capture did not expire")
 	}
+	// The cancellation callback may run before the terminal event is flushed.
+	// Verify the public terminal state before inspecting the event stream.
+	code, _ := ipcRequest(t, s, "GET", "/v1/captcha/"+id, "", testBearer, s.cfg.Generation, "", "")
+	if code != 410 {
+		t.Fatal("expired capture descriptor remained available")
+	}
 	if strings.Contains(out.String(), `"mode":"manual"`) || !strings.Contains(out.String(), `"phase":"expired"`) {
 		t.Fatal("capture timeout promoted to manual")
 	}

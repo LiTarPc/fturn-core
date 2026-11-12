@@ -2,6 +2,8 @@
 
 ## 4.2.5 (2026-11-12)
 
+* Build with Go 1.26.11 and update Brotli to 1.2.7 and klauspost/compress to 1.20.2 to fix the vulnerabilities found by release CI (GO-2026-6859, GO-2026-6888, GO-2026-6865).
+
 * Wait for TURN allocation and forwarding readiness before acquiring a DTLS handshake slot and starting its existing timeout. Preserve the primary typed DTLS failure instead of reporting only a closed internal pipe.
 * Improve client TCP half-close delivery, UDP queue bounds and oversized-packet handling, TURN allocation pacing/cooldowns, cancellation, deletion confirmation and connection readiness.
 * Add opt-in browser-computed CAPTCHA proof capture, validation and IPC v2. Manual-only settings take precedence; browser results, CAPTCHA acceptance and ready streams remain distinct states.
