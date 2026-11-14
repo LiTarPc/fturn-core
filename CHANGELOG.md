@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.2.6 (2026-11-14)
+
+* Preserve upstream CDN paths in the local CAPTCHA proxy so Webpack loads script chunks from the correct origin and CSS can resolve relative fonts. This fixes the asset-routing cause of a blank manual CAPTCHA page.
+* Keep legacy proxy links compatible, preserve escaped paths, query strings, POST requests, HTTP status and MIME types, and reuse sanitized proxy error handling.
+* Retain the host allowlist, reject invalid resource origins, and apply capture-only verification restrictions to decoded upstream paths.
+* Add offline Go and JavaScript regressions for CDN chunks, CSS/fonts, HTTP errors, invalid targets, manual tokens and browser-proof separation. Run the browser script regressions in CI and release verification.
+* Retain Go 1.26.11 and the dependency security updates from 4.2.5. No server protocol or mobile API change is required. Live VK manual completion has not been verified by this release validation.
+
 ## 4.2.5 (2026-11-12)
 
 * Build with Go 1.26.11 and update Brotli to 1.2.7 and klauspost/compress to 1.20.2 to fix the vulnerabilities found by release CI (GO-2026-6859, GO-2026-6888, GO-2026-6865).

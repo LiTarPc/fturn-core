@@ -35,6 +35,15 @@ jobs:
           version: ${{ env.TASK_VERSION }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: CAPTCHA browser script regressions
+        run: |
+          node scripts/test-captcha-observer.cjs
+          node scripts/test-captcha-resource-paths.mjs
+
       - name: Format check
         run: task fmt:check
 

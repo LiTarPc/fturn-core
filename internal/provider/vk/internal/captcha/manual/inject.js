@@ -2,7 +2,7 @@
     'use strict';
 
     const { local: LOCAL, upstream: UPSTREAM } = window.__ftpCaptcha ?? {};
-    const PROXY = '/generic_proxy?proxy_url=';
+    const PROXY = '/local-captcha-resource/';
     const RESULT = '/local-captcha-result';
     const POW_RESULT = window.__ftpCaptcha?.powPath;
     let powSent = false;
@@ -40,8 +40,12 @@
         if (!url || typeof url !== 'string') return url;
         if (url.startsWith(LOCAL)) return url;
         if (url.startsWith(UPSTREAM)) return LOCAL + url.slice(UPSTREAM.length);
-        if (url.startsWith('//')) return PROXY + encodeURIComponent(location.protocol + url);
-        if (url.startsWith('http://') || url.startsWith('https://')) return PROXY + encodeURIComponent(url);
+        if (url.startsWith('//')) url = new URL(UPSTREAM).protocol + url;
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+            const target = new URL(url);
+            const origin = btoa(target.origin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            return PROXY + origin + target.pathname + target.search + target.hash;
+        }
         return url;
     }
 
@@ -129,6 +133,10 @@
     window.fetch = function (...args) {
         const urlStr = typeof args[0] === 'object' ? args[0]?.url : args[0];
         if (typeof args[0] === 'string') args[0] = rewriteUrl(args[0]);
+        else if (args[0] instanceof Request) {
+            const rewritten = rewriteUrl(args[0].url);
+            if (rewritten !== args[0].url) args[0] = new Request(new URL(rewritten, LOCAL).href, args[0]);
+        }
 
         const promise = origFetch.apply(this, args);
         if (typeof urlStr === 'string' && urlStr.includes(CHECK)) {
