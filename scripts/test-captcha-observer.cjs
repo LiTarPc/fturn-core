@@ -7,6 +7,7 @@ const source = fs.readFileSync(path.join(__dirname, '../internal/provider/vk/int
 function page(capturePow) {
   const requests = [];
   const context = {
+    URL, Request, btoa(s){return Buffer.from(s,'binary').toString('base64')},
     __ftpCaptcha: {local:'http://localhost:8765',upstream:'https://id.vk.ru',capturePow,powPath:'/local-captcha-pow/opaque'},
     document:{body:{style:{},append(){}},documentElement:{},querySelectorAll(){return []},addEventListener(){},createElement(){return {style:{},append(){}}}},
     navigator:{sendBeacon(){throw new Error('capture must not submit token')}},
