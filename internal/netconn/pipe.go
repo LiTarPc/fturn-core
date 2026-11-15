@@ -31,7 +31,11 @@ func BiCopy(ctx context.Context, c1, c2 net.Conn, errf func(string, ...any)) (in
 	hookDone := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() { defer close(hookDone); setDeadline(time.Now()) })
 	copySide := func(dst, src net.Conn) int64 {
-		bp := copyBufPool.Get().(*[]byte)
+		bp, ok := copyBufPool.Get().(*[]byte)
+		if !ok {
+			b := make([]byte, 128*1024)
+			bp = &b
+		}
 		n, err := io.CopyBuffer(dst, src, *bp)
 		copyBufPool.Put(bp)
 		if err != nil && !errors.Is(err, io.EOF) {
