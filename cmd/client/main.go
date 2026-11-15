@@ -102,6 +102,9 @@ func main() {
 	}()
 
 	deps := session.Deps{Logger: logger, Solver: vk.DefaultManualSolver}
+	if os.Getenv("FREETURN_TRAFFIC_STATS") == "1" {
+		deps.Options.Traffic = true
+	}
 	for _, prefix := range []string{"FREETURN_", "FREETURN_TURN_", "FREETURN_RAW_"} {
 		if os.Getenv(prefix+"ADVANCED_CAPTCHA") == "1" {
 			cfg.VK.AdvancedCaptcha = true
@@ -140,6 +143,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	if deps.Options.Traffic {
+		statsCtx, cancelStats := context.WithCancel(ctx)
+		defer cancelStats()
+		go reportTrafficLoop(statsCtx, sess, logger)
+	}
+
 	if err := sess.Run(ctx); err != nil {
 		if errors.Is(err, udprelay.ErrFatal) {
 			logger.Errorf("fatal: %v", err)
@@ -147,5 +156,27 @@ func main() {
 			logger.Errorf("%v", err)
 		}
 		os.Exit(1)
+	}
+}
+
+func reportTrafficLoop(ctx context.Context, sess *session.Session, logger logx.Logger) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	var prevTx, prevRx uint64
+	var wasMoving bool
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			snap := sess.Snapshot()
+			moved := snap.TxTotal != prevTx || snap.RxTotal != prevRx
+			if moved || wasMoving {
+				prevTx, prevRx = snap.TxTotal, snap.RxTotal
+				wasMoving = moved
+				logger.Infof("[TRAFFIC] tx=%d rx=%d", snap.TxTotal, snap.RxTotal)
+			}
+		}
 	}
 }

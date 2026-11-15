@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+var copyBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 128*1024)
+		return &b
+	},
+}
+
 // BiCopy preserves TCP half-close: EOF ends only the opposite write direction.
 // Connections without CloseWrite retain the previous full-cancellation behavior.
 func BiCopy(ctx context.Context, c1, c2 net.Conn, errf func(string, ...any)) (int64, int64) {
@@ -24,7 +31,13 @@ func BiCopy(ctx context.Context, c1, c2 net.Conn, errf func(string, ...any)) (in
 	hookDone := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() { defer close(hookDone); setDeadline(time.Now()) })
 	copySide := func(dst, src net.Conn) int64 {
-		n, err := io.Copy(dst, src)
+		bp, ok := copyBufPool.Get().(*[]byte)
+		if !ok {
+			b := make([]byte, 128*1024)
+			bp = &b
+		}
+		n, err := io.CopyBuffer(dst, src, *bp)
+		copyBufPool.Put(bp)
 		if err != nil && !errors.Is(err, io.EOF) {
 			if errf != nil {
 				errf("BiCopy: copy: %v", err)
