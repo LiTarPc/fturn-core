@@ -65,26 +65,31 @@ func consumeSingleTURNFrame(b []byte) (int, error) {
 
 // ReadFrom implements ReadFrom from net.PacketConn.
 func (s *STUNConn) ReadFrom(payload []byte) (n int, addr net.Addr, err error) {
-	// First pass any buffered data from previous reads
-	n, err = consumeSingleTURNFrame(s.buff)
-	if errors.Is(err, errInvalidTURNFrame) {
-		return 0, nil, err
-	} else if err == nil {
-		copy(payload, s.buff[:n])
-		s.buff = s.buff[n:]
+	for {
+		// First pass any buffered data from previous reads
+		n, err = consumeSingleTURNFrame(s.buff)
+		if errors.Is(err, errInvalidTURNFrame) {
+			return 0, nil, err
+		} else if err == nil {
+			copy(payload, s.buff[:n])
+			if n >= len(s.buff) {
+				s.buff = s.buff[:0]
+			} else {
+				rem := copy(s.buff, s.buff[n:])
+				s.buff = s.buff[:rem]
+			}
 
-		return n, s.nextConn.RemoteAddr(), nil
+			return n, s.nextConn.RemoteAddr(), nil
+		}
+
+		// Then read from the nextConn, appending to our buff
+		n, err = s.nextConn.Read(payload)
+		if err != nil {
+			return 0, nil, err
+		}
+
+		s.buff = append(s.buff, payload[:n]...)
 	}
-
-	// Then read from the nextConn, appending to our buff
-	n, err = s.nextConn.Read(payload)
-	if err != nil {
-		return 0, nil, err
-	}
-
-	s.buff = append(s.buff, append([]byte{}, payload[:n]...)...)
-
-	return s.ReadFrom(payload)
 }
 
 // WriteTo implements WriteTo from net.PacketConn.

@@ -465,7 +465,19 @@ func (s *stream) waitRead() error {
 	case <-deadline:
 		return ErrTimeout
 	case <-s.die:
-		return io.ErrClosedPipe
+		// Half-close cleanup closes s.die once both FIN and write-close occur;
+		// drain remaining buffered data or report EOF if FIN arrived first.
+		select {
+		case <-s.chFinEvent:
+			s.bufferLock.Lock()
+			defer s.bufferLock.Unlock()
+			if s.bufferRing.len() > 0 {
+				return nil
+			}
+			return io.EOF
+		default:
+			return io.ErrClosedPipe
+		}
 	}
 
 }

@@ -633,13 +633,22 @@ func (c *UDPConn) handleChannelBindErrorResponse(res *stun.Message) error {
 	}
 }
 
+var channelDataPool = sync.Pool{
+	New: func() any {
+		return &proto.ChannelData{
+			Raw: make([]byte, 0, 2048),
+		}
+	},
+}
+
 func (c *UDPConn) sendChannelData(data []byte, chNum uint16) (int, error) {
-	chData := &proto.ChannelData{
-		Data:   data,
-		Number: proto.ChannelNumber(chNum),
-	}
+	chData := channelDataPool.Get().(*proto.ChannelData)
+	chData.Number = proto.ChannelNumber(chNum)
+	chData.Data = data
 	chData.Encode()
 	_, err := c.client.WriteTo(chData.Raw, c.serverAddr)
+	chData.Data = nil
+	channelDataPool.Put(chData)
 	if err != nil {
 		return 0, err
 	}
